@@ -35,6 +35,7 @@ public class AgentOrchestrator {
     private final PrivateKnowledgeSearchService privateKnowledgeSearchService;
     private final AgentToolExecutor toolExecutor;
     private final AgentMetrics metrics;
+    private final com.kangban.service.ActionProposalService actionProposalService;
     private final AgentToolPlanner toolPlanner = new AgentToolPlanner();
 
     @Autowired
@@ -45,7 +46,8 @@ public class AgentOrchestrator {
                              KnowledgeSearchService knowledgeSearchService,
                              PrivateKnowledgeSearchService privateKnowledgeSearchService,
                              AgentToolExecutor toolExecutor,
-                             AgentMetrics metrics) {
+                             AgentMetrics metrics,
+                             com.kangban.service.ActionProposalService actionProposalService) {
         this.aiClient = aiClient;
         this.properties = properties;
         this.contextFactory = contextFactory;
@@ -54,6 +56,7 @@ public class AgentOrchestrator {
         this.privateKnowledgeSearchService = privateKnowledgeSearchService;
         this.toolExecutor = toolExecutor;
         this.metrics = metrics;
+        this.actionProposalService = actionProposalService;
     }
 
     /** 保留已有六参数构造方式，旧单元测试不启用工具执行。 */
@@ -64,7 +67,7 @@ public class AgentOrchestrator {
                              KnowledgeSearchService knowledgeSearchService,
                              PrivateKnowledgeSearchService privateKnowledgeSearchService) {
         this(aiClient, properties, contextFactory, ragProperties, knowledgeSearchService,
-                privateKnowledgeSearchService, null, new AgentMetrics());
+                privateKnowledgeSearchService, null, new AgentMetrics(), null);
     }
 
     /** 保留既有带工具执行器的测试构造方式，默认不启用真实指标注册。 */
@@ -76,7 +79,7 @@ public class AgentOrchestrator {
                              PrivateKnowledgeSearchService privateKnowledgeSearchService,
                              AgentToolExecutor toolExecutor) {
         this(aiClient, properties, contextFactory, ragProperties, knowledgeSearchService,
-                privateKnowledgeSearchService, toolExecutor, new AgentMetrics());
+                privateKnowledgeSearchService, toolExecutor, new AgentMetrics(), null);
     }
 
     public AgentOrchestrator(AiConsultationClient aiClient,
@@ -85,7 +88,7 @@ public class AgentOrchestrator {
                              RagProperties ragProperties,
                              KnowledgeSearchService knowledgeSearchService) {
         this(aiClient, properties, contextFactory, ragProperties, knowledgeSearchService,
-                (query, context) -> RagSearchResult.empty());
+                (query, context) -> RagSearchResult.empty(), null, new AgentMetrics(), null);
     }
 
     /** 保留第一阶段单元测试和旧调用方的三参数构造方式。 */
@@ -93,7 +96,7 @@ public class AgentOrchestrator {
                              AgentProperties properties,
                              AgentExecutionContextFactory contextFactory) {
         this(aiClient, properties, contextFactory, new RagProperties(), query -> RagSearchResult.empty(),
-                (query, context) -> RagSearchResult.empty(), null, new AgentMetrics());
+                (query, context) -> RagSearchResult.empty(), null, new AgentMetrics(), null);
     }
 
     public AgentExecutionContext createContext(Long actorUserId, Long subjectUserId,
@@ -116,6 +119,16 @@ public class AgentOrchestrator {
         }
         if (context.expiredAt(Instant.now().getEpochSecond())) {
             throw new AiClientException("本次问诊上下文已失效，请重新发送。");
+        }
+
+        if (actionProposalService != null) {
+            com.kangban.service.ActionProposalService.Decision actionDecision =
+                    actionProposalService.propose(context, request.message());
+            if (actionDecision.handled()) {
+                List<ActionProposal> actions = actionDecision.action() == null
+                        ? List.of() : List.of(actionDecision.action());
+                return new AgentResponse(actionDecision.content(), context.runId(), List.of(), actions, List.of());
+            }
         }
 
         log.info("Agent run start: runId={}, traceId={}, sessionId={}, actorUserId={}, subjectUserId={}, memberId={}",
@@ -145,7 +158,7 @@ public class AgentOrchestrator {
                         : RagSearchResult.empty();
                 ragResult = RagSearchResult.merge(ragProperties, publicResult, privateResult);
                 if (ragResult.hits().isEmpty()) {
-                    if (!isPatientDataQuestion(request.message())) {
+                    if (!isPatientDataQuestion(request.message()) && toolContext.isBlank()) {
                         throw new AiClientException("知识库没有足够依据回答该问题，请换个问法或联系专业医生。");
                     }
                     providerMessage += "\n\n【本轮没有匹配的公共知识库证据】\n"
@@ -180,8 +193,8 @@ public class AgentOrchestrator {
             return new AgentResponse(content, context.runId(), citations, List.of(), toolTraces);
         } catch (AiClientException e) {
             metrics.recordAgentRun("failure", System.currentTimeMillis() - startedAt);
-            log.warn("Agent provider failure: runId={}, elapsed={}ms", context.runId(),
-                    System.currentTimeMillis() - startedAt);
+            log.warn("Agent provider failure: runId={}, elapsed={}ms, reason={}", context.runId(),
+                    System.currentTimeMillis() - startedAt, e.getMessage());
             throw e;
         } catch (RuntimeException e) {
             metrics.recordAgentRun("failure", System.currentTimeMillis() - startedAt);
@@ -235,8 +248,19 @@ public class AgentOrchestrator {
                         toolElapsedMs, result.errorCode()));
                 metrics.recordToolCall(call.name(), result.status().name(), toolElapsedMs);
                 if (result.status() != AgentToolResult.Status.SUCCESS) {
+                    log.warn("Agent tool failure: runId={}, tool={}, status={}, errorCode={}",
+                            context.runId(), call.name(), result.status(), result.errorCode());
                     if (result.status() == AgentToolResult.Status.BLOCKED) {
                         throw new AiClientException("当前账号无权读取该患者健康数据，请重新选择患者或检查家庭权限。");
+                    }
+                    if ("MCP_UNAVAILABLE".equals(result.errorCode())
+                            || "MCP_PUBLIC_DISABLED".equals(result.errorCode())
+                            || "MCP_TOOL_FAILED".equals(result.errorCode())
+                            || "MCP_PUBLIC_INPUT_REJECTED".equals(result.errorCode())) {
+                        throw new AiClientException("天津公共医疗信息服务暂时不可用，无法可靠回答该问题。");
+                    }
+                    if ("MCP_EMPTY_RESULT".equals(result.errorCode())) {
+                        throw new AiClientException("天津公共医疗目录暂无可靠数据，无法可靠回答该问题。");
                     }
                     throw new AiClientException("患者健康数据工具暂时不可用，请稍后重试。");
                 }
@@ -328,9 +352,20 @@ public class AgentOrchestrator {
                     toolElapsedMs, result.errorCode()));
             metrics.recordToolCall(call.name(), result.status().name(), toolElapsedMs);
             if (result.status() != AgentToolResult.Status.SUCCESS) {
+                log.warn("Agent tool failure: runId={}, tool={}, status={}, errorCode={}",
+                        context.runId(), call.name(), result.status(), result.errorCode());
                 if (result.status() == AgentToolResult.Status.BLOCKED) {
                     throw new AiClientException("当前账号无权读取该患者健康数据，请重新选择患者或检查家庭权限。");
                 }
+                if ("MCP_UNAVAILABLE".equals(result.errorCode())
+                        || "MCP_PUBLIC_DISABLED".equals(result.errorCode())
+                        || "MCP_TOOL_FAILED".equals(result.errorCode())
+                        || "MCP_PUBLIC_INPUT_REJECTED".equals(result.errorCode())) {
+                        throw new AiClientException("天津公共医疗信息服务暂时不可用，无法可靠回答该问题。");
+                    }
+                    if ("MCP_EMPTY_RESULT".equals(result.errorCode())) {
+                        throw new AiClientException("天津公共医疗目录暂无可靠数据，无法可靠回答该问题。");
+                    }
                 throw new AiClientException("患者健康数据工具暂时不可用，请稍后重试。");
             }
             contextText.append("[工具").append(index + 1).append("：")

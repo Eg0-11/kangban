@@ -5,6 +5,7 @@ import com.kangban.rag.KnowledgeDocumentService;
 import com.kangban.rag.KnowledgeSearchService;
 import com.kangban.rag.RagAdminGuard;
 import com.kangban.rag.RagSearchResult;
+import com.kangban.rag.VectorIndexRebuildService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ public class KnowledgeAdminController {
     private final KnowledgeDocumentService documentService;
     private final KnowledgeSearchService searchService;
     private final RagAdminGuard adminGuard;
+    private final VectorIndexRebuildService vectorIndexRebuildService;
 
     @Operation(summary = "上传公共知识文档")
     @PostMapping(value = "/documents", consumes = "multipart/form-data")
@@ -137,6 +139,17 @@ public class KnowledgeAdminController {
         adminGuard.require(adminToken);
         Long jobId = documentService.reindex(userId(user), id);
         return Result.success(Map.of("jobId", jobId));
+    }
+
+    @Operation(summary = "从 MySQL 重建 Qdrant 公共向量索引")
+    @PostMapping("/vector-index/rebuild")
+    public Result<Map<String, Object>> rebuildVectorIndex(
+            @AuthenticationPrincipal UserDetails user,
+            @RequestHeader(value = "X-Knowledge-Admin-Token", required = false) String adminToken,
+            @RequestParam(required = false) Long documentId) {
+        adminGuard.require(adminToken);
+        userId(user);
+        return Result.success(vectorIndexRebuildService.rebuildPublic(documentId));
     }
 
     @Operation(summary = "管理调试检索")

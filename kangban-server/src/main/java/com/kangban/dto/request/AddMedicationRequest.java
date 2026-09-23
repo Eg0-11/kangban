@@ -4,9 +4,14 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
+import java.time.LocalDate;
+
 @Data
 @Schema(description = "添加用药提醒请求")
 public class AddMedicationRequest {
+
+    @Schema(description = "共享账号用户 ID（空表示当前账号）")
+    private Long subjectUserId;
 
     @Schema(description = "家庭成员ID；为空表示本人")
     private Long memberId;
@@ -32,4 +37,13 @@ public class AddMedicationRequest {
 
     @Schema(description = "服用时间（逗号分隔）")
     private String times;
+
+    @Schema(description = "开始日期")
+    private LocalDate startDate;
+
+    @Schema(description = "结束日期")
+    private LocalDate endDate;
+
+    @Schema(description = "备注")
+    private String note;
 }

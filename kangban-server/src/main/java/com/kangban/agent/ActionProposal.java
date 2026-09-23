@@ -9,8 +9,14 @@ public record ActionProposal(
         String id,
         String type,
         Status status,
-        Map<String, Object> parameters
+        Map<String, Object> parameters,
+        String payloadHash,
+        String expiresAt
 ) {
+
+    public ActionProposal(String id, String type, Status status, Map<String, Object> parameters) {
+        this(id, type, status, parameters, null, null);
+    }
 
     public enum Status {
         DRAFT,

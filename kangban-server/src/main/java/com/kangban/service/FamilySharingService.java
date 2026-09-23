@@ -322,6 +322,7 @@ public class FamilySharingService {
         Map<String, Boolean> map = new LinkedHashMap<>();
         map.put("canViewHealth", Boolean.TRUE.equals(permission.getCanViewHealth()));
         map.put("canAddHealth", Boolean.TRUE.equals(permission.getCanAddHealth()));
+        map.put("canAddMedication", Boolean.TRUE.equals(permission.getCanAddMedication()));
         map.put("canViewRecords", Boolean.TRUE.equals(permission.getCanViewRecords()));
         map.put("canViewMedications", Boolean.TRUE.equals(permission.getCanViewMedications()));
         map.put("canViewReports", Boolean.TRUE.equals(permission.getCanViewReports()));
@@ -335,6 +336,7 @@ public class FamilySharingService {
         Map<String, Boolean> map = new LinkedHashMap<>();
         map.put("canViewHealth", Boolean.TRUE.equals(invitation.getCanViewHealth()));
         map.put("canAddHealth", Boolean.TRUE.equals(invitation.getCanAddHealth()));
+        map.put("canAddMedication", Boolean.TRUE.equals(invitation.getCanAddMedication()));
         map.put("canViewRecords", Boolean.TRUE.equals(invitation.getCanViewRecords()));
         map.put("canViewMedications", Boolean.TRUE.equals(invitation.getCanViewMedications()));
         map.put("canViewReports", Boolean.TRUE.equals(invitation.getCanViewReports()));
@@ -347,6 +349,7 @@ public class FamilySharingService {
     private void copyPermissions(FamilyPermissionRequest source, FamilyInvitation target) {
         target.setCanViewHealth(source.isCanViewHealth());
         target.setCanAddHealth(source.isCanAddHealth());
+        target.setCanAddMedication(source.isCanAddMedication());
         target.setCanViewRecords(source.isCanViewRecords());
         target.setCanViewMedications(source.isCanViewMedications());
         target.setCanViewReports(source.isCanViewReports());
@@ -358,6 +361,7 @@ public class FamilySharingService {
     private void copyPermissions(FamilyPermissionRequest source, FamilyPermission target) {
         target.setCanViewHealth(source.isCanViewHealth());
         target.setCanAddHealth(source.isCanAddHealth());
+        target.setCanAddMedication(source.isCanAddMedication());
         target.setCanViewRecords(source.isCanViewRecords());
         target.setCanViewMedications(source.isCanViewMedications());
         target.setCanViewReports(source.isCanViewReports());
@@ -369,6 +373,7 @@ public class FamilySharingService {
     private void copyPermissions(FamilyInvitation source, FamilyPermission target) {
         target.setCanViewHealth(source.getCanViewHealth());
         target.setCanAddHealth(source.getCanAddHealth());
+        target.setCanAddMedication(source.getCanAddMedication());
         target.setCanViewRecords(source.getCanViewRecords());
         target.setCanViewMedications(source.getCanViewMedications());
         target.setCanViewReports(source.getCanViewReports());

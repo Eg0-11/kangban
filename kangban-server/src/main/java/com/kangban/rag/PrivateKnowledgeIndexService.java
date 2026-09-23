@@ -33,6 +33,7 @@ public class PrivateKnowledgeIndexService {
     private final ObjectMapper objectMapper;
     private final TextChunker textChunker;
     private final RagProperties properties;
+    private final VectorIndexSyncService vectorIndexSyncService;
 
     @Transactional
     public void indexCompletedRecord(Long recordId) {
@@ -51,6 +52,7 @@ public class PrivateKnowledgeIndexService {
             documentId = insertDocument(record, familyId);
         } else {
             updateDocument(documentId, record, familyId);
+            vectorIndexSyncService.deleteDocument("PRIVATE", documentId);
             jdbcTemplate.update("DELETE FROM family_knowledge_chunks WHERE document_id=?", documentId);
         }
 
@@ -71,6 +73,9 @@ public class PrivateKnowledgeIndexService {
                     documentId, record.getUserId(), record.getUserId(), null, record.getMemberId(),
                     chunk.chunkIndex(), chunk.pageNumber(), chunk.section(), chunk.content(), chunk.tokenCount(),
                     toJson(embeddings.get(index)), properties.getEmbeddingModel());
+            vectorIndexSyncService.upsertPrivateChunk(documentId, chunk.chunkIndex(), chunk.pageNumber(),
+                    chunk.section(), embeddings.get(index), record.getUserId(), record.getUserId(), familyId,
+                    record.getMemberId());
         }
         jdbcTemplate.update("UPDATE family_knowledge_chunks SET family_id=? WHERE document_id=?", familyId, documentId);
         markEvent(record, "MEDICAL_RECORD_UPSERT", "SUCCEEDED", null, familyId);
@@ -98,6 +103,7 @@ public class PrivateKnowledgeIndexService {
                         + "WHERE medical_record_id=?", recordId);
         for (Long documentId : documentIds) {
             jdbcTemplate.update("DELETE FROM family_knowledge_chunks WHERE document_id=?", documentId);
+            vectorIndexSyncService.deleteDocument("PRIVATE", documentId);
         }
         if (ownerUserId != null) {
             MedicalRecord eventRecord = new MedicalRecord();

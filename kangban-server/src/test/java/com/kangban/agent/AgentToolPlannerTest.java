@@ -35,4 +35,34 @@ class AgentToolPlannerTest {
         assertThat(calls).extracting(AgentToolCall::name)
                 .containsExactly("get_health_metrics", "get_active_medications");
     }
+
+    @Test
+    void routesPublicHospitalQuestionOnlyToPublicMcpTool() {
+        List<AgentToolCall> calls = planner.plan("天津三甲医院有哪些？", 5);
+
+        assertThat(calls).extracting(AgentToolCall::name)
+                .containsExactly("search_hospitals");
+        assertThat(calls.get(0).arguments()).containsEntry("hospitalLevel", "三级甲等");
+    }
+
+    @Test
+    void routesHospitalNamesContainingExtraWordsToPublicMcpTool() {
+        List<AgentToolCall> calls = planner.plan("查天津演示医院", 5);
+
+        assertThat(calls).extracting(AgentToolCall::name)
+                .containsExactly("search_hospitals");
+        assertThat(calls.get(0).arguments()).containsEntry("keyword", "天津演示医院");
+    }
+
+    @Test
+    void doesNotSendTheFullPatientQuestionToPublicMcp() {
+        List<AgentToolCall> calls = planner.plan("我爸爸血压 180/110，想查天津医院", 5);
+
+        AgentToolCall publicCall = calls.stream()
+                .filter(call -> "search_hospitals".equals(call.name()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(publicCall.arguments()).containsEntry("keyword", "天津医院")
+                .doesNotContainValue("我爸爸血压 180/110，想查天津医院");
+    }
 }

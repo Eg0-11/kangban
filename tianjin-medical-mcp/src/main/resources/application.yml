@@ -1,0 +1,23 @@
+server:
+  port: ${TIANJIN_MCP_PORT:8092}
+
+spring:
+  application:
+    name: tianjin-medical-mcp
+  ai:
+    mcp:
+      server:
+        protocol: STREAMABLE
+        name: tianjin-medical-mcp
+        version: 0.1.0
+        type: SYNC
+        instructions: "只提供公开天津医疗目录信息，不接收患者身份、病历或用药数据。"
+        annotation-scanner:
+          enabled: false
+        streamable-http:
+          mcp-endpoint: /mcp
+
+mcp:
+  catalog:
+    # 只通过环境变量注入，不能写入仓库。
+    admin-token: ${TIANJIN_MCP_ADMIN_TOKEN:}

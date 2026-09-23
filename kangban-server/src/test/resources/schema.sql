@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     client_message_id   VARCHAR(64),
     citations_json      TEXT,
     agent_tool_traces_json TEXT,
+    actions_json        TEXT,
     created_at          TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (reply_to_message_id),
     UNIQUE (user_id, client_message_id)
@@ -211,6 +212,7 @@ CREATE TABLE IF NOT EXISTS family_invitations (
     relation             VARCHAR(20),
     can_view_health      BOOLEAN     DEFAULT TRUE,
     can_add_health       BOOLEAN     DEFAULT FALSE,
+    can_add_medication   BOOLEAN     DEFAULT FALSE,
     can_view_records     BOOLEAN     DEFAULT FALSE,
     can_view_medications BOOLEAN     DEFAULT FALSE,
     can_view_reports     BOOLEAN     DEFAULT TRUE,
@@ -231,6 +233,7 @@ CREATE TABLE IF NOT EXISTS family_permissions (
     grantee_user_id      BIGINT      NOT NULL,
     can_view_health      BOOLEAN     DEFAULT FALSE,
     can_add_health       BOOLEAN     DEFAULT FALSE,
+    can_add_medication   BOOLEAN     DEFAULT FALSE,
     can_view_records     BOOLEAN     DEFAULT FALSE,
     can_view_medications BOOLEAN     DEFAULT FALSE,
     can_view_reports     BOOLEAN     DEFAULT FALSE,
@@ -242,6 +245,27 @@ CREATE TABLE IF NOT EXISTS family_permissions (
     updated_at           TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
     revoked_at           TIMESTAMP,
     UNIQUE (family_id, subject_user_id, grantee_user_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_action_proposals (
+    id               BIGINT AUTO_INCREMENT PRIMARY KEY,
+    proposal_id      VARCHAR(64) NOT NULL UNIQUE,
+    actor_user_id    BIGINT NOT NULL,
+    subject_user_id  BIGINT NOT NULL,
+    member_id        BIGINT,
+    session_id       BIGINT NOT NULL,
+    action_type      VARCHAR(64) NOT NULL,
+    payload_json     TEXT NOT NULL,
+    payload_hash     VARCHAR(64) NOT NULL,
+    status           VARCHAR(24) NOT NULL,
+    expires_at       TIMESTAMP NOT NULL,
+    confirmed_at     TIMESTAMP,
+    executed_at      TIMESTAMP,
+    idempotency_key  VARCHAR(128) NOT NULL UNIQUE,
+    result_reference VARCHAR(128),
+    error_code       VARCHAR(64),
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -355,4 +379,21 @@ CREATE TABLE IF NOT EXISTS knowledge_outbox_events (
     last_error        VARCHAR(1000),
     created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     processed_at      TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS vector_index_sync (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    index_scope     VARCHAR(20) NOT NULL,
+    document_id     BIGINT NOT NULL,
+    chunk_index     INT NOT NULL,
+    point_id        VARCHAR(64) NOT NULL,
+    embedding_model VARCHAR(100) NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    attempts        INT NOT NULL DEFAULT 0,
+    last_error      VARCHAR(1000),
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    synced_at       TIMESTAMP,
+    UNIQUE (index_scope, document_id, chunk_index, embedding_model),
+    UNIQUE (point_id)
 );

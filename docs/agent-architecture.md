@@ -18,14 +18,16 @@ flowchart TB
     上下文、工具、记忆、RAG、模型]
     TOOLS[只读 Agent 工具
     健康指标 / 用药 / 病历]
-    RAG[KnowledgeSearchService
-    公共资料 + 私有病历权限过滤]
+    RAG[RoutingKnowledgeSearchService
+    MySQL / Dual / Qdrant 路由]
     INGEST[KnowledgeDocumentService
     解析 / 切片 / Embedding / 审核发布]
     QWEN_EMB[Qwen text-embedding-v4]
     QWEN_CHAT[Qwen Chat / Tool Calling]
     MYSQL[(MySQL
     业务数据、文档元数据、切片、引用、审计)]
+    QDRANT[(Qdrant
+    可重建向量索引)]
     REDIS[(Redis
     验证码、缓存、短期状态)]
     MINIO[(MinIO
@@ -41,7 +43,10 @@ flowchart TB
     DOMAIN --> MINIO
     API --> AGENT
     AGENT --> TOOLS --> DOMAIN
-    AGENT --> RAG --> MYSQL
+    AGENT --> RAG
+    RAG -->|mysql-jdbc| MYSQL
+    RAG -->|qdrant 召回 + 权限回查| QDRANT
+    RAG --> MYSQL
     RAG --> QWEN_EMB
     AGENT --> QWEN_CHAT
     QWEN_CHAT --> AGENT
@@ -50,6 +55,7 @@ flowchart TB
     WEB -->|管理员上传资料| API
     API --> INGEST --> MYSQL
     INGEST --> QWEN_EMB
+    INGEST -->|双写/删除/状态同步| QDRANT
 ```
 
 ## AI 问诊请求时序
@@ -92,7 +98,9 @@ sequenceDiagram
 | `AgentToolRegistry` | 注册当前允许使用的工具 | 当前只允许只读工具 |
 | `AgentToolExecutor` | 校验上下文、执行工具、记录状态和耗时 | 越权或写工具直接阻断 |
 | `KnowledgeDocumentService` | 文档上传、解析、切片、审核、发布和重建索引 | 只有发布且有切片的文档可被公共检索 |
-| `JdbcKnowledgeSearchService` | 过滤已发布文档、生成 Query Embedding、混合排序和引用 | 先做文档状态与 Embedding 模型过滤 |
+| `RoutingKnowledgeSearchService` | 按 `mysql-jdbc`、`dual`、`qdrant` 选择检索链路 | 默认 MySQL；Qdrant 失败不生成无依据回答 |
+| `QdrantKnowledgeSearchService` | Qdrant Top-K 召回、MySQL 正文回查、权限复核和混合排序 | Qdrant 只保存可重建索引，不保存业务事实 |
+| `VectorIndexSyncService` | 文档入库、发布、撤回和删除时同步 Qdrant | 写入失败记录 `vector_index_sync`，不吞掉 qdrant 模式故障 |
 | `ConsultationService` | 保存会话消息并把 Agent 事件转为 SSE | 处理超时、重试和断线收尾 |
 | `QwenAiConsultationClient` | Qwen Chat / Tool Calling 适配 | API Key 只从环境变量读取 |
 

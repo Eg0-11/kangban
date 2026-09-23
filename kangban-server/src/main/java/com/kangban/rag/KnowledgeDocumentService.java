@@ -38,6 +38,7 @@ public class KnowledgeDocumentService {
     private final RagProperties properties;
     private final AuditService auditService;
     private final KnowledgeIngestionRunner ingestionRunner;
+    private final VectorIndexSyncService vectorIndexSyncService;
 
     public KnowledgeDocumentService(JdbcTemplate jdbcTemplate,
                                     DocumentParser parser,
@@ -46,7 +47,8 @@ public class KnowledgeDocumentService {
                                     ObjectMapper objectMapper,
                                     RagProperties properties,
                                     AuditService auditService,
-                                    KnowledgeIngestionRunner ingestionRunner) {
+                                    KnowledgeIngestionRunner ingestionRunner,
+                                    VectorIndexSyncService vectorIndexSyncService) {
         this.jdbcTemplate = jdbcTemplate;
         this.parser = parser;
         this.chunker = chunker;
@@ -55,6 +57,7 @@ public class KnowledgeDocumentService {
         this.properties = properties;
         this.auditService = auditService;
         this.ingestionRunner = ingestionRunner;
+        this.vectorIndexSyncService = vectorIndexSyncService;
     }
 
     @Transactional
@@ -142,6 +145,7 @@ public class KnowledgeDocumentService {
             if (embeddings.size() != chunks.size()) {
                 throw new IllegalStateException("知识片段向量数量不一致");
             }
+            vectorIndexSyncService.deleteDocument("PUBLIC", documentId);
             jdbcTemplate.update("DELETE FROM knowledge_chunks WHERE document_id=?", documentId);
             for (int index = 0; index < chunks.size(); index++) {
                 KnowledgeChunkDraft chunk = chunks.get(index);
@@ -152,6 +156,8 @@ public class KnowledgeDocumentService {
                         documentId, chunk.chunkIndex(), chunk.pageNumber(), blankToNull(chunk.section()),
                         chunk.content(), chunk.tokenCount(), serializeEmbedding(embeddings.get(index)),
                         properties.getEmbeddingModel());
+                vectorIndexSyncService.upsertPublicChunk(documentId, chunk.chunkIndex(), chunk.pageNumber(),
+                        blankToNull(chunk.section()), embeddings.get(index), String.valueOf(document.get("status")));
             }
             jdbcTemplate.update("UPDATE ingestion_jobs SET status='SUCCEEDED', total_chunks=?, "
                             + "processed_chunks=?, error_message=NULL, completed_at=?, updated_at=? WHERE id=?",
@@ -219,6 +225,7 @@ public class KnowledgeDocumentService {
         jdbcTemplate.update("UPDATE knowledge_documents SET status='PUBLISHED', review_note=?, "
                         + "published_at=?, revoked_at=NULL, updated_by=?, updated_at=? WHERE id=? AND status='PENDING_REVIEW'",
                 blankToNull(reviewNote), LocalDateTime.now(), actorUserId, LocalDateTime.now(), documentId);
+        vectorIndexSyncService.updateDocumentStatus("PUBLIC", documentId, "PUBLISHED");
         auditService.record(actorUserId, "KNOWLEDGE_PUBLISH", "knowledge_document", documentId,
                 "审核通过并发布公共知识文档");
     }
@@ -235,6 +242,7 @@ public class KnowledgeDocumentService {
         jdbcTemplate.update("UPDATE knowledge_documents SET status='REVOKED', review_note=?, revoked_at=?, "
                         + "updated_by=?, updated_at=? WHERE id=? AND deleted_at IS NULL",
                 blankToNull(reason), LocalDateTime.now(), actorUserId, LocalDateTime.now(), documentId);
+        vectorIndexSyncService.deleteDocument("PUBLIC", documentId);
         auditService.record(actorUserId, "KNOWLEDGE_REVOKE", "knowledge_document", documentId,
                 "撤回公共知识文档");
     }
@@ -247,6 +255,7 @@ public class KnowledgeDocumentService {
         jdbcTemplate.update("UPDATE knowledge_documents SET status='REVOKED', deleted_at=?, "
                         + "updated_by=?, updated_at=? WHERE id=? AND deleted_at IS NULL",
                 LocalDateTime.now(), actorUserId, LocalDateTime.now(), documentId);
+        vectorIndexSyncService.deleteDocument("PUBLIC", documentId);
         auditService.record(actorUserId, "KNOWLEDGE_DELETE", "knowledge_document", documentId,
                 "删除公共知识文档");
     }

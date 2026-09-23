@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import * as consultApi from '../api/consultation.js';
 import * as familyApi from '../api/family.js';
 import * as healthApi from '../api/health.js';
+import { parseActionProposalEvent, readActionProposals } from '../agentAction.js';
 import { API_CONFIG, AUTH_TOKEN_KEY } from '../api/config.js';
 import { buildConsultationPayload } from '../api/contracts.js';
 import { Card, IconButton, StatusChip } from '../components/UI.jsx';
@@ -47,6 +48,49 @@ function agentToolLabel(trace) {
   return AGENT_TOOL_LABELS[trace?.toolName] || '授权健康数据';
 }
 
+const ACTION_STATUS_LABELS = {
+  PENDING_CONFIRMATION: '待确认',
+  PROPOSED: '待确认',
+  CONFIRMED: '确认中',
+  EXECUTED: '已执行',
+  SUCCEEDED: '已执行',
+  CANCELLED: '已取消',
+  EXPIRED: '已过期',
+  FAILED: '执行失败',
+};
+
+const ACTION_TYPE_LABELS = {
+  HEALTH_RECORD: '健康记录草案',
+  MEDICATION: '用药计划草案',
+};
+
+function actionFields(action) {
+  const payload = action?.parameters || action?.payload || {};
+  if (action?.type === 'HEALTH_RECORD' || action?.actionType === 'HEALTH_RECORD') {
+    return [
+      ['患者', payload.patientLabel],
+      ['指标', payload.metricLabel || payload.metric],
+      ['数值', payload.value],
+      ['单位', payload.unit],
+      ['日期', payload.recordedDate],
+      ['时间', payload.recordedTime],
+      ['备注', payload.note],
+    ];
+  }
+  return [
+    ['患者', payload.patientLabel],
+    ['药品', payload.name],
+    ['单次剂量', payload.dosage],
+    ['剂量单位', payload.unit],
+    ['服用频率', payload.frequency],
+    ['提醒时间', payload.times],
+    ['开始日期', payload.startDate],
+    ['结束日期', payload.endDate],
+    ['信息来源', payload.informationSource === 'DOCTOR_INSTRUCTION' ? '医生医嘱' : '用户提供'],
+    ['备注', payload.note],
+  ];
+}
+
 export default function ConsultationPage() {
   const { user } = useAuth();
   const [sessionId, setSessionId] = useState(null);
@@ -56,6 +100,9 @@ export default function ConsultationPage() {
   const [streamingText, setStreamingText] = useState('');
   const [streamingCitations, setStreamingCitations] = useState([]);
   const [streamingToolTraces, setStreamingToolTraces] = useState([]);
+  const [streamingActions, setStreamingActions] = useState([]);
+  const [actionBusy, setActionBusy] = useState({});
+  const [actionErrors, setActionErrors] = useState({});
   const [thinking, setThinking] = useState(false);
   const [thinkingText, setThinkingText] = useState('');
   const [sendError, setSendError] = useState(null);
@@ -138,7 +185,7 @@ export default function ConsultationPage() {
       scrollChatToBottom(reduceMotion ? 'auto' : 'smooth');
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [messages.length, thinking, thinkingText, streaming, streamingText, streamingToolTraces.length, sendError, scrollChatToBottom]);
+  }, [messages.length, thinking, thinkingText, streaming, streamingText, streamingToolTraces.length, streamingActions.length, sendError, scrollChatToBottom]);
 
   useEffect(() => {
     let active = true;
@@ -176,6 +223,7 @@ export default function ConsultationPage() {
     setStreamingText('');
     setStreamingCitations([]);
     setStreamingToolTraces([]);
+    setStreamingActions([]);
     streamingCitationsRef.current = [];
     setSendError(null);
 
@@ -261,6 +309,7 @@ export default function ConsultationPage() {
     setStreamingText('');
     setStreamingCitations([]);
     setStreamingToolTraces([]);
+    setStreamingActions([]);
     streamingCitationsRef.current = [];
 
     const token = localStorage.getItem(AUTH_TOKEN_KEY);
@@ -272,6 +321,7 @@ export default function ConsultationPage() {
     let settled = false;
     let receivedCitations = [];
     let receivedToolTraces = [];
+    let receivedActions = [];
 
     const finish = () => {
       settled = true;
@@ -324,6 +374,13 @@ export default function ConsultationPage() {
         }
         return;
       }
+      if (eventName === 'action_proposal') {
+        const action = parseActionProposalEvent(data);
+        if (!action) return;
+        receivedActions = [...receivedActions, action];
+        setStreamingActions((previous) => [...previous, action]);
+        return;
+      }
       if (eventName !== 'done') return;
       if (settled) return;
       const finalText = data;
@@ -339,9 +396,11 @@ export default function ConsultationPage() {
           replyToMessageId: messageId,
           citations: receivedCitations,
           agentToolTraces: receivedToolTraces,
+          actions: receivedActions,
           createdAt: new Date().toISOString(),
         }];
       });
+      setStreamingActions([]);
     };
 
     const consumeBlock = (block) => {
@@ -395,6 +454,63 @@ export default function ConsultationPage() {
 
     readStream();
   }, [sessionId, setMessagesData]);
+
+  const updateActionInMessages = useCallback((proposalId, result) => {
+    setMessagesData((previous) => {
+      const list = Array.isArray(previous) ? previous : (previous?.messages || []);
+      return list.map((message) => {
+        const actions = readActionProposals(message);
+        if (!actions.some((action) => action.id === proposalId)) return message;
+        const nextActions = actions.map((action) => action.id === proposalId
+          ? {
+              ...action,
+              status: result?.status || action.status,
+              resultReference: result?.resultReference || action.resultReference,
+              errorCode: result?.errorCode || action.errorCode,
+            }
+          : action);
+        return { ...message, actions: nextActions };
+      });
+    });
+  }, []);
+
+  const confirmAction = useCallback(async (action) => {
+    const proposalId = action?.id;
+    if (!proposalId || actionBusy[proposalId]) return;
+    setActionBusy((previous) => ({ ...previous, [proposalId]: 'confirm' }));
+    setActionErrors((previous) => ({ ...previous, [proposalId]: null }));
+    try {
+      const detail = await consultApi.getActionProposal(proposalId);
+      const result = await consultApi.confirmActionProposal(
+        proposalId,
+        detail?.payloadHash || action.payloadHash,
+      );
+      updateActionInMessages(proposalId, result);
+      setStreamingActions((previous) => previous.map((item) => item.id === proposalId
+        ? { ...item, status: result?.status || item.status } : item));
+    } catch (error) {
+      setActionErrors((previous) => ({ ...previous, [proposalId]: error?.message || '确认失败，请重试' }));
+    } finally {
+      setActionBusy((previous) => ({ ...previous, [proposalId]: null }));
+    }
+  }, [actionBusy, updateActionInMessages]);
+
+  const cancelAction = useCallback(async (action) => {
+    const proposalId = action?.id;
+    if (!proposalId || actionBusy[proposalId]) return;
+    setActionBusy((previous) => ({ ...previous, [proposalId]: 'cancel' }));
+    setActionErrors((previous) => ({ ...previous, [proposalId]: null }));
+    try {
+      const result = await consultApi.cancelActionProposal(proposalId);
+      updateActionInMessages(proposalId, result);
+      setStreamingActions((previous) => previous.map((item) => item.id === proposalId
+        ? { ...item, status: result?.status || item.status } : item));
+    } catch (error) {
+      setActionErrors((previous) => ({ ...previous, [proposalId]: error?.message || '取消失败，请重试' }));
+    } finally {
+      setActionBusy((previous) => ({ ...previous, [proposalId]: null }));
+    }
+  }, [actionBusy, updateActionInMessages]);
 
   const retryLastResponse = useCallback(() => {
     if (!failedMessageIdRef.current || sendingRef.current) return;
@@ -528,6 +644,56 @@ export default function ConsultationPage() {
   const isLoadingInitial = (sessionLoading || (sessionId && messagesLoading)) && messages.length === 0 && !thinking && !streaming;
   const loadError = sessionError || messagesError;
 
+  const renderActionCard = (action, key) => {
+    const proposalId = action?.id;
+    const status = action?.status || 'PENDING_CONFIRMATION';
+    const canConfirm = ['PENDING_CONFIRMATION', 'PROPOSED'].includes(status);
+    const fields = actionFields(action).filter(([, value]) => value !== null && value !== undefined && value !== '');
+    return (
+      <div className="agent-action-card" key={proposalId || key}>
+        <div className="agent-action-head">
+          <strong>{ACTION_TYPE_LABELS[action?.type] || '待确认操作'}</strong>
+          <span className={`agent-action-status ${status.toLowerCase()}`}>
+            {ACTION_STATUS_LABELS[status] || status}
+          </span>
+        </div>
+        <div className="agent-action-fields">
+          {fields.map(([label, value]) => (
+            <div className="agent-action-field" key={`${proposalId}-${label}`}>
+              <span>{label}</span>
+              <strong>{String(value)}</strong>
+            </div>
+          ))}
+        </div>
+        <p className="agent-action-notice">AI 只生成录入草案，不代表诊断或处方；确认后才会写入您的授权账户。</p>
+        {canConfirm && (
+          <div className="agent-action-buttons">
+            <button
+              type="button"
+              className="agent-action-confirm"
+              onClick={() => confirmAction(action)}
+              disabled={Boolean(actionBusy[proposalId])}
+            >
+              {actionBusy[proposalId] === 'confirm' ? '执行中…' : '确认并保存'}
+            </button>
+            <button
+              type="button"
+              className="agent-action-cancel"
+              onClick={() => cancelAction(action)}
+              disabled={Boolean(actionBusy[proposalId])}
+            >
+              {actionBusy[proposalId] === 'cancel' ? '取消中…' : '取消'}
+            </button>
+          </div>
+        )}
+        {actionErrors[proposalId] && <div className="agent-action-error" role="alert">{actionErrors[proposalId]}</div>}
+        {status === 'EXECUTED' && action?.resultReference && (
+          <div className="agent-action-result">已保存，记录编号：{action.resultReference}</div>
+        )}
+      </div>
+    );
+  };
+
   /** Render a single message bubble */
   const renderMessage = (msg) => {
     const role = msg.role || msg.sender || 'user';
@@ -544,6 +710,7 @@ export default function ConsultationPage() {
       }
     }
     const toolTraces = readAgentToolTraces(msg);
+    const actions = readActionProposals(msg);
 
     return isAssistant ? (
       <div key={id} className="message" style={{alignItems:'flex-start'}}>
@@ -568,6 +735,11 @@ export default function ConsultationPage() {
                   {trace.status === 'SUCCESS' ? '✓' : '!' } {agentToolLabel(trace)}
                 </span>
               ))}
+            </div>
+          )}
+          {actions.length > 0 && (
+            <div className="agent-action-list" aria-label="待确认操作">
+              {actions.map((action, index) => renderActionCard(action, index))}
             </div>
           )}
         </div>
@@ -617,6 +789,11 @@ export default function ConsultationPage() {
             <div>
               <div className="message-bubble streaming">{streamingText}<span className="cursor-blink">|</span></div>
             </div>
+          </div>
+        )}
+        {streamingActions.length > 0 && (
+          <div className="agent-action-list streaming-actions" aria-label="待确认操作">
+            {streamingActions.map((action, index) => renderActionCard(action, index))}
           </div>
         )}
       </>

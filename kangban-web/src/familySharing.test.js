@@ -12,6 +12,7 @@ test('家庭账号共享使用邀请确认、精细权限和即时撤销接口',
   assert.match(panel, /接受邀请即表示同意/);
   assert.match(panel, /canViewHealth/);
   assert.match(panel, /canAddHealth/);
+  assert.match(panel, /canAddMedication/);
   assert.match(panel, /canUseAi/);
   assert.match(panel, /撤销全部/);
   assert.match(panel, /家人用户名/);

@@ -38,6 +38,8 @@ public class MedicationService {
     private final DrugInteractionResultMapper drugInteractionResultMapper;
     private final DrugInteractionRuleMapper drugInteractionRuleMapper;
     private final FamilyMemberMapper familyMemberMapper;
+    private final FamilyAccessService familyAccessService;
+    private final AuditService auditService;
 
     public PageResult<Map<String, Object>> list(Long userId, Integer page, Integer pageSize,
                                                 String status, Long memberId) {
@@ -79,9 +81,11 @@ public class MedicationService {
     }
 
     public Result<Map<String, Object>> add(Long userId, AddMedicationRequest request) {
-        validateMemberAccess(userId, request.getMemberId());
+        Long subjectUserId = familyAccessService.require(
+                userId, request.getSubjectUserId(), FamilyAccessService.Scope.ADD_MEDICATION);
+        validateMemberAccess(subjectUserId, request.getMemberId());
         Medication medication = new Medication();
-        medication.setUserId(userId);
+        medication.setUserId(subjectUserId);
         medication.setMemberId(request.getMemberId());
         medication.setName(request.getName());
         medication.setDosage(request.getDosage());
@@ -90,9 +94,16 @@ public class MedicationService {
         medication.setFrequency(request.getFrequency());
         medication.setInventory(request.getInventory());
         medication.setTimes(serializeTimes(request.getTimes()));
+        medication.setStartDate(request.getStartDate());
+        medication.setEndDate(request.getEndDate());
+        medication.setNote(request.getNote());
         medication.setStatus("active");
         medication.setCreatedAt(LocalDateTime.now());
         medicationMapper.insert(medication);
+        if (!userId.equals(subjectUserId)) {
+            auditService.record(userId, "SHARED_MEDICATION_CREATE", "medication",
+                    medication.getId(), "为授权家庭账号录入用药计划");
+        }
         return Result.success("添加成功", toMap(medication));
     }
 

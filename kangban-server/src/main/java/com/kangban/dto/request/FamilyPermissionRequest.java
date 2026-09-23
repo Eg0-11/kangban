@@ -6,6 +6,7 @@ import lombok.Data;
 public class FamilyPermissionRequest {
     private boolean canViewHealth;
     private boolean canAddHealth;
+    private boolean canAddMedication;
     private boolean canViewRecords;
     private boolean canViewMedications;
     private boolean canViewReports;

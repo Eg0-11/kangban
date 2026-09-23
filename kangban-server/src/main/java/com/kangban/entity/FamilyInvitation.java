@@ -18,6 +18,7 @@ public class FamilyInvitation {
     private String relation;
     private Boolean canViewHealth;
     private Boolean canAddHealth;
+    private Boolean canAddMedication;
     private Boolean canViewRecords;
     private Boolean canViewMedications;
     private Boolean canViewReports;

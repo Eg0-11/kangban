@@ -2,11 +2,13 @@ package com.kangban.controller;
 
 import com.kangban.common.Result;
 import com.kangban.dto.request.CreateSessionRequest;
+import com.kangban.dto.request.ConfirmActionProposalRequest;
 import com.kangban.dto.request.SendMessageRequest;
 import com.kangban.dto.request.UpdatePatientRequest;
 import com.kangban.entity.ChatMessage;
 import com.kangban.entity.ChatSession;
 import com.kangban.service.ConsultationService;
+import com.kangban.service.ActionProposalService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -26,6 +28,7 @@ import java.util.Map;
 public class ConsultationController {
 
     private final ConsultationService consultationService;
+    private final ActionProposalService actionProposalService;
 
     @Operation(summary = "获取会话列表")
     @GetMapping("/sessions")
@@ -67,6 +70,32 @@ public class ConsultationController {
                                                    @Valid @RequestBody SendMessageRequest req) {
         Long userId = Long.parseLong(user.getUsername());
         return consultationService.sendMessage(userId, id, req);
+    }
+
+    @Operation(summary = "获取 Agent 动作草案")
+    @GetMapping("/actions/{proposalId}")
+    public Result<ActionProposalService.ActionProposalView> getActionProposal(
+            @AuthenticationPrincipal UserDetails user, @PathVariable String proposalId) {
+        Long userId = Long.parseLong(user.getUsername());
+        return Result.success(actionProposalService.get(userId, proposalId));
+    }
+
+    @Operation(summary = "确认并执行 Agent 动作草案")
+    @PostMapping("/actions/{proposalId}/confirm")
+    public Result<ActionProposalService.ActionProposalView> confirmActionProposal(
+            @AuthenticationPrincipal UserDetails user,
+            @PathVariable String proposalId,
+            @Valid @RequestBody ConfirmActionProposalRequest request) {
+        Long userId = Long.parseLong(user.getUsername());
+        return Result.success("动作已执行", actionProposalService.confirm(userId, proposalId, request.getPayloadHash()));
+    }
+
+    @Operation(summary = "取消 Agent 动作草案")
+    @PostMapping("/actions/{proposalId}/cancel")
+    public Result<ActionProposalService.ActionProposalView> cancelActionProposal(
+            @AuthenticationPrincipal UserDetails user, @PathVariable String proposalId) {
+        Long userId = Long.parseLong(user.getUsername());
+        return Result.success("动作已取消", actionProposalService.cancel(userId, proposalId));
     }
 
     @Operation(summary = "流式获取AI回复 (SSE)")

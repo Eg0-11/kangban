@@ -18,6 +18,7 @@ public class FamilyAccessService {
     public enum Scope {
         VIEW_HEALTH(FamilyPermission::getCanViewHealth),
         ADD_HEALTH(FamilyPermission::getCanAddHealth),
+        ADD_MEDICATION(FamilyPermission::getCanAddMedication),
         VIEW_RECORDS(FamilyPermission::getCanViewRecords),
         VIEW_MEDICATIONS(FamilyPermission::getCanViewMedications),
         VIEW_REPORTS(FamilyPermission::getCanViewReports),

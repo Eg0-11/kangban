@@ -5,6 +5,7 @@ import * as familyApi from '../api/family.js';
 const PERMISSIONS = [
   ['canViewHealth', '查看健康指标'],
   ['canAddHealth', '录入健康指标'],
+  ['canAddMedication', '录入用药计划'],
   ['canViewRecords', '查看病历'],
   ['canViewMedications', '查看用药'],
   ['canViewReports', '查看健康报告'],
@@ -16,6 +17,7 @@ const PERMISSIONS = [
 const DEFAULT_PERMISSIONS = {
   canViewHealth: true,
   canAddHealth: false,
+  canAddMedication: false,
   canViewRecords: false,
   canViewMedications: false,
   canViewReports: true,

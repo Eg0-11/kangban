@@ -37,3 +37,18 @@ export function getConsultationHistory() {
 export function updatePatientProfile(data) {
   return put('/consultation/patient', data);
 }
+
+/** 获取 Agent 动作草案详情 */
+export function getActionProposal(proposalId) {
+  return get(`/consultation/actions/${encodeURIComponent(proposalId)}`);
+}
+
+/** 确认并执行 Agent 动作草案 */
+export function confirmActionProposal(proposalId, payloadHash) {
+  return post(`/consultation/actions/${encodeURIComponent(proposalId)}/confirm`, { payloadHash });
+}
+
+/** 取消 Agent 动作草案 */
+export function cancelActionProposal(proposalId) {
+  return post(`/consultation/actions/${encodeURIComponent(proposalId)}/cancel`, {});
+}

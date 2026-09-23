@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kangban.common.BusinessException;
 import com.kangban.common.Result;
 import com.kangban.agent.AgentExecutionContext;
+import com.kangban.agent.ActionProposal;
 import com.kangban.agent.AgentOrchestrator;
 import com.kangban.agent.AgentRequest;
 import com.kangban.agent.AgentResponse;
@@ -281,7 +282,7 @@ public class ConsultationService {
         ChatMessage existingReply = findReply(messageId);
         if (existingReply != null) {
             replayCompletedResponse(emitter, existingReply.getContent(), existingReply.getCitationsJson(),
-                    existingReply.getAgentToolTracesJson());
+                    existingReply.getAgentToolTracesJson(), existingReply.getActionsJson());
             return emitter;
         }
 
@@ -310,6 +311,7 @@ public class ConsultationService {
                     String fullResponse = agentResponse.content();
                     List<com.kangban.agent.Citation> citations = agentResponse.citations();
                     List<AgentToolTrace> toolTraces = agentResponse.toolTraces();
+                    List<ActionProposal> actions = agentResponse.actions();
 
                     // Save first: if the browser disconnects, retry can replay the same reply.
                     ChatMessage completedReply = findReply(messageId);
@@ -317,6 +319,7 @@ public class ConsultationService {
                         fullResponse = completedReply.getContent();
                         citations = readCitations(completedReply.getCitationsJson());
                         toolTraces = readAgentToolTraces(completedReply.getAgentToolTracesJson());
+                        actions = readActions(completedReply.getActionsJson());
                     } else {
                         ChatMessage aiMessage = new ChatMessage();
                         aiMessage.setSessionId(sessionId);
@@ -326,6 +329,7 @@ public class ConsultationService {
                         aiMessage.setReplyToMessageId(messageId);
                         aiMessage.setCitationsJson(toJson(citations));
                         aiMessage.setAgentToolTracesJson(toJson(toolTraces));
+                        aiMessage.setActionsJson(toJson(actions));
                         aiMessage.setCreatedAt(LocalDateTime.now());
                         chatMessageMapper.insert(aiMessage);
                     }
@@ -334,6 +338,9 @@ public class ConsultationService {
                         emitter.send(SseEmitter.event().name("agent_tool").data(toClientToolTrace(toolTrace)));
                     }
                     emitter.send(SseEmitter.event().name("thinking_done").data(""));
+                    for (ActionProposal action : actions) {
+                        emitter.send(SseEmitter.event().name("action_proposal").data(action));
+                    }
                     for (com.kangban.agent.Citation citation : citations) {
                         emitter.send(SseEmitter.event().name("citation").data(citation));
                     }
@@ -406,12 +413,15 @@ public class ConsultationService {
     }
 
     private void replayCompletedResponse(SseEmitter emitter, String response, String citationsJson,
-                                         String agentToolTracesJson) {
+                                         String agentToolTracesJson, String actionsJson) {
         try {
             for (AgentToolTrace toolTrace : readAgentToolTraces(agentToolTracesJson)) {
                 emitter.send(SseEmitter.event().name("agent_tool").data(toClientToolTrace(toolTrace)));
             }
             emitter.send(SseEmitter.event().name("thinking_done").data(""));
+            for (ActionProposal action : readActions(actionsJson)) {
+                emitter.send(SseEmitter.event().name("action_proposal").data(action));
+            }
             for (com.kangban.agent.Citation citation : readCitations(citationsJson)) {
                 emitter.send(SseEmitter.event().name("citation").data(citation));
             }
@@ -450,6 +460,17 @@ public class ConsultationService {
         try {
             return objectMapper.readValue(citationsJson,
                     new TypeReference<List<com.kangban.agent.Citation>>() {});
+        } catch (JsonProcessingException ignored) {
+            return List.of();
+        }
+    }
+
+    private List<ActionProposal> readActions(String actionsJson) {
+        if (actionsJson == null || actionsJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(actionsJson, new TypeReference<List<ActionProposal>>() {});
         } catch (JsonProcessingException ignored) {
             return List.of();
         }

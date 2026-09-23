@@ -23,6 +23,7 @@ kangban-web/.env.*
 # Build outputs
 kangban-server/target/
 kangban-web/dist/
+tianjin-medical-mcp/target/
 
 # Dependencies
 kangban-web/node_modules/

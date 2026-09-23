@@ -34,5 +34,8 @@ public class ChatMessage {
     /** Agent 本轮工具执行轨迹的安全 JSON；不包含患者正文或工具参数。 */
     private String agentToolTracesJson;
 
+    /** Agent 本轮待确认动作草案 JSON；只有草案结构，不代表已执行。 */
+    private String actionsJson;
+
     private LocalDateTime createdAt;
 }

@@ -129,6 +129,30 @@ class AgentOrchestratorTest {
     }
 
     @Test
+    void continuesPublicMcpQuestionWhenKnowledgeBaseHasNoEvidence() {
+        AiConsultationClient aiClient = mock(AiConsultationClient.class);
+        RagProperties ragProperties = new RagProperties();
+        ragProperties.setEnabled(true);
+        AgentToolExecutor toolExecutor = mock(AgentToolExecutor.class);
+        when(toolExecutor.execute(any(), any())).thenReturn(AgentToolResult.success(
+                "search_hospitals",
+                "{\"dataStatus\":\"DEMO\",\"items\":[{\"hospitalName\":\"天津演示医院\"}]}"));
+        when(aiClient.consult(eq(31L), contains("天津演示医院"), eq("{}")))
+                .thenReturn("已找到天津演示医院，结果为演示数据。");
+        AgentOrchestrator orchestrator = new AgentOrchestrator(
+                aiClient, new AgentProperties(), mock(AgentExecutionContextFactory.class), ragProperties,
+                query -> RagSearchResult.empty(), (query, context) -> RagSearchResult.empty(), toolExecutor);
+
+        AgentResponse response = orchestrator.run(new AgentRequest(
+                context("run-public-mcp-empty-rag"), "查天津演示医院", "{}"));
+
+        assertThat(response.content()).contains("天津演示医院");
+        verify(toolExecutor).execute(eq(context("run-public-mcp-empty-rag")), argThat(call ->
+                "search_hospitals".equals(call.name())));
+        verify(aiClient).consult(eq(31L), contains("天津演示医院"), eq("{}"));
+    }
+
+    @Test
     void continuesPatientDataQuestionWhenKnowledgeBaseHasNoEvidence() {
         AiConsultationClient aiClient = mock(AiConsultationClient.class);
         RagProperties ragProperties = new RagProperties();

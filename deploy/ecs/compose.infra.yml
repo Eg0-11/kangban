@@ -28,6 +28,20 @@ services:
     volumes:
       - kangban_minio_data:/data
 
+  # Optional derived vector index. Start with:
+  # docker compose --profile qdrant --env-file .env -f compose.infra.yml up -d
+  qdrant:
+    image: ${KANGBAN_QDRANT_IMAGE:-qdrant/qdrant:v1.14.1}
+    container_name: kangban-qdrant-prod
+    profiles: ["qdrant"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    volumes:
+      - kangban_qdrant_data:/qdrant/storage
+
 volumes:
   kangban_redis_data:
   kangban_minio_data:
+  kangban_qdrant_data:

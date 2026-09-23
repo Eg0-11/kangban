@@ -15,7 +15,7 @@ public class RagProperties {
     private boolean enabled = false;
     /** RAG 开启后是否同时检索当前授权患者的家庭私有病历。 */
     private boolean privateEnabled = true;
-    private String vectorStore = "memory";
+    private String vectorStore = "mysql-jdbc";
     private int topK = 5;
     private double minScore = 0.7;
     private int maxContextTokens = 6000;
@@ -27,4 +27,13 @@ public class RagProperties {
     private int embeddingDimensions = 1024;
     private int embeddingBatchSize = 16;
     private long maxFileBytes = 10 * 1024 * 1024L;
+    private String qdrantUrl = "http://127.0.0.1:6333";
+    private String qdrantApiKey = "";
+    private String qdrantCollection = "kangban_knowledge";
+    private int qdrantTimeoutMs = 3000;
+    private int qdrantMaxSearchLimit = 50;
+
+    public com.kangban.rag.VectorStoreMode vectorStoreMode() {
+        return com.kangban.rag.VectorStoreMode.parse(vectorStore);
+    }
 }
