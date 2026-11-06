@@ -11,12 +11,12 @@
 
 原版基线为 `5d322e39f756200cad4e09f08411c2b991a8cc44`。原版目录保持干净，迁移在 `codex/python-agent-migration` 分支独立提交；两个工作目录共享 Git 对象历史，工作文件独立。仓库外的 `kangban-version-map.md` 记录本机绝对路径、最终提交和离线备份。
 
-本地离线备份为 `kangban-java-before-python-2026-10-28.bundle` 和 `kangban-python-after-migration-2026-10-28.bundle`，只包含对应版本的 Git 历史和已提交源码。GitHub 的 `main` 对应 Java 原版，`codex/python-agent` 提供整理后的 Python 发布快照，包含迁移交付后修复 Java 网关空闲连接复用的改动。分阶段提交和版本标签留在本地。
+本地离线备份为 `kangban-java-before-python-2026-10-28.bundle` 和 `kangban-python-after-migration-2026-10-28.bundle`，只包含对应版本的 Git 历史和已提交源码。GitHub 的 `main` 提供当前 Python 版，包含迁移交付后的 Java 网关空闲连接修复。GitHub 分支 `codex/java-original` 保留 Java 原版，`codex/python-agent` 保留 Python 迁移发布分支。分阶段提交和版本标签保存在本地。
 
 查看差异：
 
 ```text
-git diff java-agent-before-python-2026-10-28 python-agent-migrated-2026-10-28 --stat
+git diff origin/codex/java-original origin/main --stat
 ```
 
 ## 迁移和保留范围

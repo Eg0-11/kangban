@@ -8,7 +8,7 @@
 - 基线标签：`java-agent-before-python-2026-10-28`。
 - 修改前工作目录：`kangban-java-original`。
 - 迁移工作目录：`kangban-python-migration`。
-- 本地迁移历史保存在 `codex/python-agent-migration`，GitHub 发布分支为 `codex/python-agent`。
+- 本地迁移历史保存在 `codex/python-agent-migration`。GitHub 的 `main` 提供当前 Python 版，`codex/java-original` 保留 Java 原版。
 - 用户已选择：直接用 Python 复现现有编排；最终从迁移版删除旧 Java 编排；保留独立原版和离线 Git 备份。
 - 用户已选择：先用模拟模型、模拟工具/MCP、固定数据或测试数据库验证；使用真实 Qwen、Embedding、MySQL 或其他已有服务配置前另行确认。
 - 每项任务完成后自检、报告进度，取得用户明确同意后才能开始下一项。

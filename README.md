@@ -2,7 +2,7 @@
 
 康伴是一个前后端分离的家庭健康管理系统，也是一个面向医疗场景的 Agent Demo。当前版本使用 **Python 自研 Agent 编排 + Java 业务后端 + React 前端**，围绕“当前患者”连接只读工具、可选天津公共医疗 MCP、MySQL 事实源、Qdrant 可重建索引和模型。
 
-GitHub 的 `main` 分支保留 Java 原版，`codex/python-agent` 分支提供 Python 迁移版。迁移版已移除旧 Java 编排和问诊模型客户端，Java 业务后端仍负责数据和权限。运行、版本与验收说明见 [Python 迁移交付说明](docs/python-agent-delivery.md)。
+GitHub 默认分支 `main` 提供 Python 迁移版。Java 业务后端继续负责数据和权限。查看 [Java 原版](https://github.com/Eg0-11/kangban/tree/codex/java-original) 或 [Python 迁移交付说明](docs/python-agent-delivery.md)。
 
 > 健康数据和 AI 输出仅用于功能演示与健康信息参考，不替代医生诊断、处方或急救建议。
 
