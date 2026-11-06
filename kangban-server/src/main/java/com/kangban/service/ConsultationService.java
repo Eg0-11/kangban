@@ -8,7 +8,8 @@ import com.kangban.common.BusinessException;
 import com.kangban.common.Result;
 import com.kangban.agent.AgentExecutionContext;
 import com.kangban.agent.ActionProposal;
-import com.kangban.agent.AgentOrchestrator;
+import com.kangban.agent.AgentGateway;
+import com.kangban.agent.AgentRunCancellation;
 import com.kangban.agent.AgentRequest;
 import com.kangban.agent.AgentResponse;
 import com.kangban.agent.AgentToolTrace;
@@ -44,7 +45,7 @@ public class ConsultationService {
     private final ChatSessionMapper chatSessionMapper;
     private final ChatMessageMapper chatMessageMapper;
     private final ObjectMapper objectMapper;
-    private final AgentOrchestrator agentOrchestrator;
+    private final AgentGateway agentGateway;
     private final PatientHealthContextService patientHealthContextService;
     private final FamilyAccessService familyAccessService;
     private final AuditService auditService;
@@ -291,11 +292,17 @@ public class ConsultationService {
             return emitter;
         }
 
+        AgentRunCancellation cancellation = new AgentRunCancellation();
+        emitter.onTimeout(cancellation::cancel);
+        emitter.onError(error -> cancellation.cancel());
+        emitter.onCompletion(cancellation::cancel);
+
         try {
             taskExecutor.execute(() -> {
                 long start = System.currentTimeMillis();
                 log.info("SSE streaming start: sessionId={}, messageId={}", sessionId, messageId);
                 try {
+                    cancellation.checkActive();
                     emitter.send(SseEmitter.event().name("thinking").data("正在分析您的症状..."));
                     familyAccessService.require(userId, subjectUserId, FamilyAccessService.Scope.USE_AI);
                     PatientHealthContextService.Snapshot currentSnapshot =
@@ -303,11 +310,11 @@ public class ConsultationService {
                     session.setPatientData(currentSnapshot.contextJson());
                     session.setUpdatedAt(LocalDateTime.now());
                     chatSessionMapper.updateById(session);
-                    AgentExecutionContext context = agentOrchestrator.createContext(
+                    AgentExecutionContext context = agentGateway.createContext(
                             userId, subjectUserId, session.getMemberId(), sessionId);
-                    AgentResponse agentResponse = agentOrchestrator.run(new AgentRequest(
+                    AgentResponse agentResponse = agentGateway.run(new AgentRequest(
                             context, userMsg.getContent(), currentSnapshot.contextJson(),
-                            loadConversationHistory(session, userMsg.getId())));
+                            loadConversationHistory(session, userMsg.getId())), cancellation);
                     String fullResponse = agentResponse.content();
                     List<com.kangban.agent.Citation> citations = agentResponse.citations();
                     List<AgentToolTrace> toolTraces = agentResponse.toolTraces();
@@ -362,6 +369,7 @@ public class ConsultationService {
                             sessionId, messageId, e.getClass().getSimpleName());
                     failEmitter(emitter, "AI 服务暂时不可用，请稍后重试。");
                 } finally {
+                    cancellation.detach();
                     activeMessageIds.remove(messageId);
                 }
             });
@@ -488,7 +496,7 @@ public class ConsultationService {
         try {
             emitter.send(SseEmitter.event().name("ai_error").data(message));
             emitter.complete();
-        } catch (IOException e) {
+        } catch (IOException | IllegalStateException e) {
             emitter.complete();
         }
     }

@@ -1,5 +1,7 @@
 # 康伴 Agent 实习面试复述手册
 
+> 历史说明：本文保留 Java 原版架构与当时的测量记录，对应 `java-agent-before-python-2026-10-28`。Python 迁移版已删除文中的旧 Java 编排类；当前模块、启动和验收以 [迁移交付说明](python-agent-delivery.md) 及 [架构图](agent-architecture.md) 为准。
+
 > 版本：2026-08-16 代码核验版（含操作提案、天津公共医疗 MCP 与 Qdrant）  
 > 适用岗位：Java 后端 / Agent 应用开发实习  
 > 参考文章：[Agent 面试追问链，预防把你“熟悉 Agent 架构”的简历问穿了](https://www.nowcoder.com/discuss/917092512525713408?sourceSSR=users)

@@ -2,7 +2,7 @@ package com.kangban.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kangban.agent.AgentExecutionContext;
-import com.kangban.agent.AgentOrchestrator;
+import com.kangban.agent.AgentGateway;
 import com.kangban.agent.AgentResponse;
 import com.kangban.agent.AgentToolResult;
 import com.kangban.agent.AgentToolTrace;
@@ -31,7 +31,7 @@ class ConsultationServiceTest {
 
     private ChatSessionMapper sessionMapper;
     private ChatMessageMapper messageMapper;
-    private AgentOrchestrator agentOrchestrator;
+    private AgentGateway agentGateway;
     private PatientHealthContextService patientHealthContextService;
     private FamilyAccessService familyAccessService;
     private AuditService auditService;
@@ -41,7 +41,7 @@ class ConsultationServiceTest {
     void setUp() {
         sessionMapper = mock(ChatSessionMapper.class);
         messageMapper = mock(ChatMessageMapper.class);
-        agentOrchestrator = mock(AgentOrchestrator.class);
+        agentGateway = mock(AgentGateway.class);
         patientHealthContextService = mock(PatientHealthContextService.class);
         familyAccessService = mock(FamilyAccessService.class);
         auditService = mock(AuditService.class);
@@ -51,7 +51,7 @@ class ConsultationServiceTest {
             return subject == null ? actor : subject;
         });
         service = new ConsultationService(
-                sessionMapper, messageMapper, new ObjectMapper(), agentOrchestrator, patientHealthContextService,
+                sessionMapper, messageMapper, new ObjectMapper(), agentGateway, patientHealthContextService,
                 familyAccessService, auditService);
         ReflectionTestUtils.setField(service, "taskExecutor", (Executor) Runnable::run);
     }
@@ -116,7 +116,7 @@ class ConsultationServiceTest {
         ArgumentCaptor<ChatMessage> messageCaptor = ArgumentCaptor.forClass(ChatMessage.class);
         verify(sessionMapper).updateById(sessionCaptor.capture());
         verify(messageMapper).insert(messageCaptor.capture());
-        verifyNoInteractions(agentOrchestrator);
+        verifyNoInteractions(agentGateway);
         assertThat(sessionCaptor.getValue().getPatientData()).contains("family-agent-v2");
         assertThat(messageCaptor.getValue().getSessionId()).isEqualTo(31L);
         assertThat(messageCaptor.getValue().getRole()).isEqualTo("assistant");
@@ -157,8 +157,8 @@ class ConsultationServiceTest {
         when(messageMapper.selectOne(any())).thenReturn(userMessage, null, null);
         when(patientHealthContextService.build(9L, null)).thenReturn(snapshot());
         AgentExecutionContext context = context();
-        when(agentOrchestrator.createContext(9L, 9L, null, 3L)).thenReturn(context);
-        when(agentOrchestrator.run(any())).thenReturn(
+        when(agentGateway.createContext(9L, 9L, null, 3L)).thenReturn(context);
+        when(agentGateway.run(any(), any())).thenReturn(
                 new AgentResponse("请注意休息并观察症状。", context.runId(),
                         java.util.List.of(new Citation("private:7", "血常规", "1", null,
                                 "OCR文本", "家庭私有病历", "2026-08-12", "PRIVATE")), null,
@@ -168,7 +168,7 @@ class ConsultationServiceTest {
         service.streamAiResponse(9L, 3L, 21L);
 
         ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(agentOrchestrator, times(1)).run(any());
+        verify(agentGateway, times(1)).run(any(), any());
         verify(messageMapper, times(1)).insert(captor.capture());
         assertThat(captor.getValue().getReplyToMessageId()).isEqualTo(21L);
         assertThat(captor.getValue().getRole()).isEqualTo("assistant");
@@ -200,15 +200,15 @@ class ConsultationServiceTest {
                 java.util.List.of(previousAssistant, previousUser, toolTraceMessage));
         when(patientHealthContextService.build(9L, null)).thenReturn(snapshot());
         AgentExecutionContext context = context();
-        when(agentOrchestrator.createContext(9L, 9L, null, 3L)).thenReturn(context);
-        when(agentOrchestrator.run(any())).thenReturn(
+        when(agentGateway.createContext(9L, 9L, null, 3L)).thenReturn(context);
+        when(agentGateway.run(any(), any())).thenReturn(
                 new AgentResponse("已结合上轮对话。", context.runId(), List.of(), null, List.of()));
 
         service.streamAiResponse(9L, 3L, 21L);
 
         org.mockito.ArgumentCaptor<com.kangban.agent.AgentRequest> requestCaptor =
                 org.mockito.ArgumentCaptor.forClass(com.kangban.agent.AgentRequest.class);
-        verify(agentOrchestrator).run(requestCaptor.capture());
+        verify(agentGateway).run(requestCaptor.capture(), any());
         assertThat(requestCaptor.getValue().history())
                 .extracting(ConversationMessage::content)
                 .containsExactly("我上次的血压是多少", "上次记录是 128/80。");
@@ -229,7 +229,30 @@ class ConsultationServiceTest {
 
         service.streamAiResponse(9L, 3L, 21L);
 
-        verifyNoInteractions(agentOrchestrator);
+        verifyNoInteractions(agentGateway);
+        verify(messageMapper, never()).insert(any());
+    }
+
+    @Test
+    void overlappingGenerationIsRejectedAndExplicitRetryCanStartAfterFailure() {
+        var queued = new java.util.ArrayList<Runnable>();
+        ReflectionTestUtils.setField(service, "taskExecutor", (Executor) queued::add);
+        ChatMessage user = userMessage(21L, 3L, 9L, "client-queued");
+        when(sessionMapper.selectOne(any())).thenReturn(session(3L, 9L));
+        when(messageMapper.selectOne(any())).thenReturn(user, null, user, null);
+        when(patientHealthContextService.build(9L, null)).thenReturn(snapshot());
+        when(agentGateway.createContext(9L, 9L, null, 3L)).thenReturn(context());
+        when(agentGateway.run(any(), any())).thenThrow(new com.kangban.client.AiClientException("合成故障"));
+        service.streamAiResponse(9L, 3L, 21L);
+        service.streamAiResponse(9L, 3L, 21L);
+        assertThat(queued).hasSize(1);
+        verifyNoInteractions(agentGateway);
+        queued.remove(0).run();
+        when(messageMapper.selectOne(any())).thenReturn(user, null);
+        service.streamAiResponse(9L, 3L, 21L);
+        assertThat(queued).hasSize(1);
+        queued.remove(0).run();
+        verify(agentGateway, times(2)).run(any(), any());
         verify(messageMapper, never()).insert(any());
     }
 

@@ -60,7 +60,7 @@ public class AgentContextSigner {
             AgentExecutionContext context = objectMapper.readValue(
                     Base64.getUrlDecoder().decode(parts[1]), AgentExecutionContext.class);
             if (context.expiredAt(System.currentTimeMillis() / 1000)) {
-                throw new IllegalArgumentException("Agent 上下文已过期");
+                throw new ExpiredContextException();
             }
             return context;
         } catch (IllegalArgumentException e) {
@@ -89,5 +89,12 @@ public class AgentContextSigner {
 
     private String encode(byte[] value) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value);
+    }
+
+    /** 保留原异常类型和文案，同时让内部 HTTP 边界可靠地区分过期和篡改。 */
+    public static final class ExpiredContextException extends IllegalArgumentException {
+        public ExpiredContextException() {
+            super("Agent 上下文已过期");
+        }
     }
 }

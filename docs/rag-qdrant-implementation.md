@@ -10,7 +10,8 @@
 
 ```mermaid
 flowchart LR
-    A[AgentOrchestrator] --> R[RoutingKnowledgeSearchService]
+    A[Python Agent 编排] --> C[Java 内部 RAG 回调]
+    C --> R[RoutingKnowledgeSearchService]
     R -->|mysql-jdbc| M[JdbcKnowledgeSearchService]
     R -->|qdrant| Q[QdrantKnowledgeSearchService]
     R -->|dual| Q

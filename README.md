@@ -1,6 +1,8 @@
 # 康伴智能医疗助手
 
-康伴是一个前后端分离的家庭健康管理系统，也是一个面向医疗场景的 Agent Demo。系统围绕“当前患者”组织健康数据、家庭权限和 AI 问诊，通过自研 Agent 编排层连接患者私有只读工具、可选的天津公共医疗 MCP、MySQL 事实源、Qdrant 可重建向量索引和 Qwen 模型。
+康伴是一个前后端分离的家庭健康管理系统，也是一个面向医疗场景的 Agent Demo。当前版本使用 **Python 自研 Agent 编排 + Java 业务后端 + React 前端**，围绕“当前患者”连接只读工具、可选天津公共医疗 MCP、MySQL 事实源、Qdrant 可重建索引和模型。
+
+GitHub 的 `main` 分支保留 Java 原版，`codex/python-agent` 分支提供 Python 迁移版。迁移版已移除旧 Java 编排和问诊模型客户端，Java 业务后端仍负责数据和权限。运行、版本与验收说明见 [Python 迁移交付说明](docs/python-agent-delivery.md)。
 
 > 健康数据和 AI 输出仅用于功能演示与健康信息参考，不替代医生诊断、处方或急救建议。
 
@@ -9,14 +11,14 @@
 本项目不是简单的聊天页面，而是一条可运行的 Agent 链路：
 
 1. 用户选择本人或授权家庭成员作为当前患者；
-2. `AgentToolPlanner` 或可选的 Qwen Function Calling 根据问题选择只读工具；
+2. Python `planner.py` 或可选的 Qwen Function Calling 根据问题选择只读工具；
 3. Agent 查询患者快照、健康指标、当前用药和近期病历，身份范围由服务端上下文决定；
 4. 对公共健康资料和家庭私有资料执行分域 RAG，Qdrant 负责向量召回，MySQL 回查正文、引用和权限事实；
 5. 可选调用天津公共医疗 MCP 查询医院、医生和科室等公开目录；
 6. 对健康记录和用药计划只生成操作提案，用户确认后才由原有业务服务写入；
 7. 通过 SSE 将状态、工具轨迹、引用、操作提案和最终答案返回前端，并支持已落库消息重放。
 
-当前核心 Agent 编排为项目内自研实现，未依赖 LangChain4j；Spring AI 只用于独立天津公共医疗 MCP 服务及其 MCP 传输适配，不替代 `AgentOrchestrator`。核心实现位于 [`kangban-server/src/main/java/com/kangban/agent`](kangban-server/src/main/java/com/kangban/agent)。
+核心编排位于 [`kangban-agent/src/kangban_agent`](kangban-agent/src/kangban_agent)，不引入 LangGraph。Java 的 [`agent`](kangban-server/src/main/java/com/kangban/agent) 保留网关、签名、工具、提案类型和指标；RAG、授权及业务写入留在 Java。Spring AI 仍仅用于独立公共医疗 MCP 服务及传输适配。
 
 ## 架构概览
 
@@ -31,13 +33,15 @@ flowchart LR
     DOMAIN --> DB[(MySQL)]
     DOMAIN --> REDIS[(Redis)]
     DOMAIN --> OBJ[(MinIO)]
-    API --> ORCH[AgentOrchestrator]
-    ORCH --> TOOLS[4 个患者只读 Agent 工具]
+    API --> GW[Java PythonAgentGateway]
+    GW -->|认证内部 HTTP| ORCH[Python AgentOrchestrator]
+    ORCH -->|签名上下文回调| CALLBACK[Java 内部能力与逐次授权]
+    CALLBACK --> TOOLS[4 个患者只读 Agent 工具]
     TOOLS --> DB
-    ORCH --> MCPCLIENT[可选 MCP Client]
+    CALLBACK --> MCPCLIENT[可选 MCP Client]
     MCPCLIENT --> MCP[天津公共医疗 MCP :8092]
     MCP --> CATALOG[(公开医院/医生/科室目录)]
-    ORCH --> ROUTER[RoutingKnowledgeSearchService]
+    CALLBACK --> ROUTER[RoutingKnowledgeSearchService]
     ROUTER --> MYSQLRAG[mysql-jdbc: MySQL 候选扫描]
     ROUTER --> QDRANTRAG[qdrant: Qdrant 向量召回]
     ROUTER --> DUAL[dual: Qdrant 可用性读取, 最终 MySQL]
@@ -115,22 +119,30 @@ Agent 工具按数据域隔离，患者私有工具和公共医疗 MCP 不混用
 - Qwen OpenAI-compatible API
 - Spring AI MCP（仅用于独立公共医疗 MCP 服务/传输适配）
 
+### Python Agent
+
+- Python 3.12.14，uv 与固定依赖锁文件
+- FastAPI / Uvicorn / HTTPX / Pydantic
+- 原有 Mock、Qwen 普通/工具调用、DeepSeek 普通问诊路径
+- 服务凭据、Java 签名上下文、统一截止时间及取消
+
 ## 目录结构
 
 ```text
 .
 ├── kangban-web/                    # React + Vite 前端
+├── kangban-agent/                  # Python 编排、记忆、安全、模型适配与基线对照
 ├── kangban-server/                 # Spring Boot 后端
 │   └── src/main/java/com/kangban/
-│       ├── agent/                  # Agent 编排、工具、记忆、安全、指标
-│       ├── client/                 # Qwen / AI 客户端
+│       ├── agent/                  # Python 网关、签名、工具、提案类型、指标
+│       ├── client/                 # OCR 与保留的共享配置 / 工具定义
 │       ├── controller/             # REST / SSE 接口
 │       ├── rag/                    # 文档入库、Embedding、MySQL/Qdrant 检索与索引同步
 │       └── service/                # 领域服务
 ├── tianjin-medical-mcp/            # 独立天津公共医疗目录 MCP 服务（默认不启用）
 ├── deploy/ecs/                     # ECS、Nginx、Redis、MinIO 部署模板
 ├── docs/                           # 架构、评测、发布和安全说明
-├── scripts/                        # 发布检查和真实 RAG 评测脚本
+├── scripts/                        # 统一初始化/启动、发布检查和真实 RAG 评测脚本
 └── rag-test.md                     # 手工 RAG 验收步骤
 ```
 
@@ -142,11 +154,24 @@ Agent 工具按数据域隔离，患者私有工具和公共医疗 MCP 不混用
 - npm
 - JDK 17+
 - Maven 3.9+
+- uv 与 Python 3.12.14（初始化脚本定位 uv 并建立项目隔离环境）
 - MySQL
 - Redis
 - MinIO
 
 ### 配置
+
+Windows 推荐从根目录执行：
+
+```powershell
+.\scripts\initialize-local.ps1
+# 编辑自动生成且被 Git 忽略的 kangban.local.env，填写本地 MySQL / Redis / MinIO 配置
+.\scripts\start-local.ps1
+```
+
+初始化固定 Python 依赖、安装前端依赖、干净打包 Java，并生成独立本地服务/JWT/签名凭据；已有本地配置不会覆盖。启动脚本按顺序开启 Python、Java 和前端，按 Ctrl+C 清理本次启动的进程。默认模型为 Mock，RAG 和公共 MCP 关闭。此命令不会安装或启动 MySQL、Redis、MinIO；先准备好这些既有服务。
+
+Linux/macOS 使用 `bash scripts/initialize-local.sh` 和 `bash scripts/start-local.sh`；如 uv 不在 PATH，可设置 `UV_BIN` 为其路径。也可按下文分别运行各服务。完整配置、端口、单进程启动、Docker 和 systemd 说明见 [交付说明](docs/python-agent-delivery.md)。
 
 后端示例配置：[`kangban-server/.env.example`](kangban-server/.env.example)
 
@@ -190,6 +215,8 @@ APP_MCP_PUBLIC_ENDPOINT=/mcp
 ```
 
 ### 启动后端
+
+问诊需要 Python 同时运行，且 Java 配置 `APP_AGENT_INTERNAL_ENABLED=true`、独立服务凭据、Java 签名密钥及 `APP_AGENT_PYTHON_BASE_URL`。先参考 [Python 运行说明](kangban-agent/README.md) 启动 Agent；直接运行单个服务时，环境文件须由启动工具注入，不会自动读取。
 
 ```bash
 cd kangban-server
@@ -250,12 +277,25 @@ npm test
 npm run build
 ```
 
-后端：
+统一检查（强制 Mock、本地 Embedding 和独立 H2，不调用真实模型）：
+
+```powershell
+.\scripts\release-check.ps1
+```
+
+或在 Bash 执行 `bash scripts/release-check.sh`。包括 Python、前端、Java 干净构建、真实本机跨进程联调、契约以及原有发布检查。
+
+单独检查 Python：
+
+```powershell
+.\kangban-agent\.venv\Scripts\python.exe -m pytest -q kangban-agent/tests
+```
+
+后端（先准备 Python `.venv`，需要 `clean` 保证旧类不残留）：
 
 ```bash
 cd kangban-server
-mvn test -Dspring.profiles.active=test
-mvn package
+mvn clean verify -Dspring.profiles.active=test -Dapp.ai.provider=mock -Dapp.agent.rag.embedding-provider=local -Dapp.mcp.public.enabled=false -Dspring.ai.mcp.client.enabled=false
 ```
 
 独立 MCP 服务：
@@ -294,7 +334,7 @@ RAG 评测命令和指标口径见 [`docs/agent-metrics-guide.md`](docs/agent-me
 
 ## 简历项目表述
 
-> 基于 Spring Boot 自研 Agent Orchestrator 构建家庭医疗智能问诊系统：集成 Qwen Tool Calling、4 个患者健康数据只读工具、MySQL 事实源 + Qdrant 可重建向量索引和可选天津公共医疗 MCP；实现家庭成员权限隔离、结构化引用、无依据拒答、医疗写操作确认和 SSE 流式输出。
+> 基于 Python 自研 Agent 编排与 Spring Boot 业务后端构建家庭医疗智能问诊系统：集成 Qwen Tool Calling、4 个患者健康数据只读工具、MySQL 事实源 + Qdrant 可重建向量索引和可选天津公共医疗 MCP；通过带签名上下文的内部接口复用家庭权限、结构化引用、确认式写入和原有 SSE 问诊流程。
 
 ## 相关文档
 
@@ -306,5 +346,6 @@ RAG 评测命令和指标口径见 [`docs/agent-metrics-guide.md`](docs/agent-me
 - [`docs/康伴MCP与Agent安全写入落地说明.md`](docs/康伴MCP与Agent安全写入落地说明.md)：公共 MCP、Agent 工具边界和确认式写入
 - [`docs/agent-medical-safety.md`](docs/agent-medical-safety.md)：医疗安全边界
 - [`docs/agent-observability.md`](docs/agent-observability.md)：Agent 指标和日志规范
-- [`docs/RELEASE_CANDIDATE.md`](docs/RELEASE_CANDIDATE.md)：发布检查和回滚说明
+- [`docs/python-agent-delivery.md`](docs/python-agent-delivery.md)：当前迁移版的启动、部署、版本和验收
+- [`docs/RELEASE_CANDIDATE.md`](docs/RELEASE_CANDIDATE.md)：原 Java 版本发布与回滚历史
 - [`rag-test.md`](rag-test.md)：手工 RAG 验收步骤

@@ -1,0 +1,923 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kangban:python-agent:v1",
+  "title": "Kangban Python Agent v1 internal contract (design, not implemented)",
+  "$comment": "Schemas describe normalized wire values. Context trust, expiry, semantic conditions, and header validation require application checks. Examples are synthetic and timestamps are illustrative.",
+  "$ref": "#/$defs/RunEnvelope",
+  "x-baselineCommit": "5d322e39f756200cad4e09f08411c2b991a8cc44",
+  "x-javaRecords": {
+    "AgentExecutionContext": "kangban-server/src/main/java/com/kangban/agent/AgentExecutionContext.java",
+    "ConversationMessage": "kangban-server/src/main/java/com/kangban/agent/ConversationMessage.java",
+    "AgentRequest": "kangban-server/src/main/java/com/kangban/agent/AgentRequest.java",
+    "AgentResponse": "kangban-server/src/main/java/com/kangban/agent/AgentResponse.java",
+    "Citation": "kangban-server/src/main/java/com/kangban/agent/Citation.java",
+    "ActionProposal": "kangban-server/src/main/java/com/kangban/agent/ActionProposal.java",
+    "AgentToolTrace": "kangban-server/src/main/java/com/kangban/agent/AgentToolTrace.java",
+    "AgentToolCall": "kangban-server/src/main/java/com/kangban/agent/AgentToolCall.java",
+    "AgentToolResult": "kangban-server/src/main/java/com/kangban/agent/AgentToolResult.java",
+    "AiToolDefinition": "kangban-server/src/main/java/com/kangban/client/AiToolDefinition.java",
+    "KnowledgeSearchHit": "kangban-server/src/main/java/com/kangban/rag/KnowledgeSearchHit.java",
+    "RagSearchResult": "kangban-server/src/main/java/com/kangban/rag/RagSearchResult.java"
+  },
+  "x-httpContracts": [
+    {
+      "direction": "java-to-python",
+      "method": "POST",
+      "path": "/internal/agent/v1/run",
+      "request": "RunEnvelope",
+      "response": "RunResultEnvelope",
+      "requiredHeaders": [
+        "X-Agent-Service-Token",
+        "X-Agent-Context",
+        "X-Agent-Deadline-Epoch-Ms"
+      ],
+      "error": "InternalError"
+    },
+    {
+      "direction": "local-health",
+      "method": "GET",
+      "path": "/health",
+      "request": null,
+      "response": "HealthResponse",
+      "requiredHeaders": [],
+      "error": null
+    },
+    {
+      "direction": "python-to-java",
+      "method": "GET",
+      "path": "/internal/agent/v1/tools",
+      "request": null,
+      "response": "ToolDefinitionsResponse",
+      "requiredHeaders": [
+        "X-Agent-Service-Token",
+        "X-Agent-Context",
+        "X-Agent-Deadline-Epoch-Ms"
+      ],
+      "error": "InternalError"
+    },
+    {
+      "direction": "python-to-java",
+      "method": "POST",
+      "path": "/internal/agent/v1/tools/execute",
+      "request": "AgentToolCall",
+      "response": "ToolExecutionResponse",
+      "requiredHeaders": [
+        "X-Agent-Service-Token",
+        "X-Agent-Context",
+        "X-Agent-Deadline-Epoch-Ms"
+      ],
+      "error": "InternalError"
+    },
+    {
+      "direction": "python-to-java",
+      "method": "POST",
+      "path": "/internal/agent/v1/rag/search",
+      "request": "RagSearchRequest",
+      "response": "RagSearchResult",
+      "requiredHeaders": [
+        "X-Agent-Service-Token",
+        "X-Agent-Context",
+        "X-Agent-Deadline-Epoch-Ms"
+      ],
+      "error": "InternalError"
+    },
+    {
+      "direction": "python-to-java",
+      "method": "POST",
+      "path": "/internal/agent/v1/actions/propose",
+      "request": "ProposalRequest",
+      "response": "ProposalDecision",
+      "requiredHeaders": [
+        "X-Agent-Service-Token",
+        "X-Agent-Context",
+        "X-Agent-Deadline-Epoch-Ms"
+      ],
+      "error": "InternalError"
+    }
+  ],
+  "x-readOnlyToolNames": [
+    "get_patient_health_snapshot",
+    "get_health_metrics",
+    "get_active_medications",
+    "get_recent_medical_records",
+    "search_hospitals",
+    "get_hospital_info",
+    "search_doctors",
+    "search_departments"
+  ],
+  "x-sseEvents": [
+    "thinking",
+    "agent_tool",
+    "thinking_done",
+    "action_proposal",
+    "citation",
+    "token",
+    "done",
+    "ai_error"
+  ],
+  "$defs": {
+    "AgentExecutionContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actorUserId": {
+          "type": "integer",
+          "minimum": -9223372036854775808,
+          "maximum": 9223372036854775807
+        },
+        "subjectUserId": {
+          "type": "integer",
+          "minimum": -9223372036854775808,
+          "maximum": 9223372036854775807
+        },
+        "memberId": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9223372036854775808,
+              "maximum": 9223372036854775807
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessionId": {
+          "type": "integer",
+          "minimum": -9223372036854775808,
+          "maximum": 9223372036854775807
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "traceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issuedAtEpochSecond": {
+          "type": "integer",
+          "minimum": -9223372036854775808,
+          "maximum": 9223372036854775807
+        },
+        "expiresAtEpochSecond": {
+          "type": "integer",
+          "minimum": -9223372036854775808,
+          "maximum": 9223372036854775807
+        }
+      },
+      "required": [
+        "actorUserId",
+        "subjectUserId",
+        "memberId",
+        "sessionId",
+        "runId",
+        "traceId",
+        "issuedAtEpochSecond",
+        "expiresAtEpochSecond"
+      ]
+    },
+    "ConversationMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "user",
+            "assistant"
+          ]
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ]
+    },
+    "AgentRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "$ref": "#/$defs/AgentExecutionContext"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "patientContextJson": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConversationMessage"
+          }
+        }
+      },
+      "required": [
+        "context",
+        "message",
+        "patientContextJson",
+        "history"
+      ]
+    },
+    "RuntimeOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "modelToolCallingEnabled": {
+          "type": "boolean"
+        },
+        "ragEnabled": {
+          "type": "boolean"
+        },
+        "maxIterations": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "maxHistoryMessages": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "maxHistoryTokens": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "maxHistoryMessageCharacters": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "enabled",
+        "modelToolCallingEnabled",
+        "ragEnabled",
+        "maxIterations",
+        "maxHistoryMessages",
+        "maxHistoryTokens",
+        "maxHistoryMessageCharacters"
+      ]
+    },
+    "RunEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contractVersion": {
+          "const": "1"
+        },
+        "request": {
+          "$ref": "#/$defs/AgentRequest"
+        },
+        "options": {
+          "$ref": "#/$defs/RuntimeOptions"
+        }
+      },
+      "required": [
+        "contractVersion",
+        "request",
+        "options"
+      ],
+      "examples": [
+        {
+          "contractVersion": "1",
+          "request": {
+            "context": {
+              "actorUserId": 101,
+              "subjectUserId": 101,
+              "memberId": null,
+              "sessionId": 501,
+              "runId": "example-run",
+              "traceId": "example-trace",
+              "issuedAtEpochSecond": 1793116800,
+              "expiresAtEpochSecond": 1793117100
+            },
+            "message": "我的血压记录有哪些？",
+            "patientContextJson": "{}",
+            "history": [
+              {
+                "role": "user",
+                "content": "查看我的记录"
+              }
+            ]
+          },
+          "options": {
+            "enabled": true,
+            "modelToolCallingEnabled": false,
+            "ragEnabled": false,
+            "maxIterations": 5,
+            "maxHistoryMessages": 12,
+            "maxHistoryTokens": 6000,
+            "maxHistoryMessageCharacters": 4000
+          }
+        }
+      ]
+    },
+    "Citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "documentId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pageNumber": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updatedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "PUBLIC",
+            "PRIVATE"
+          ]
+        }
+      },
+      "required": [
+        "documentId",
+        "title",
+        "version",
+        "pageNumber",
+        "section",
+        "source",
+        "updatedAt",
+        "scope"
+      ]
+    },
+    "ActionProposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "DRAFT",
+            "PENDING_CONFIRMATION",
+            "CONFIRMED",
+            "EXECUTING",
+            "SUCCEEDED",
+            "FAILED",
+            "CANCELLED",
+            "EXPIRED"
+          ]
+        },
+        "parameters": {
+          "type": "object"
+        },
+        "payloadHash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "status",
+        "parameters",
+        "payloadHash",
+        "expiresAt"
+      ]
+    },
+    "AgentToolTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "toolName": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "SUCCESS",
+            "BLOCKED",
+            "FAILED"
+          ]
+        },
+        "iteration": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "errorCode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "toolName",
+        "status",
+        "iteration",
+        "elapsedMs",
+        "errorCode"
+      ]
+    },
+    "AgentResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Citation"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ActionProposal"
+          }
+        },
+        "toolTraces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AgentToolTrace"
+          }
+        }
+      },
+      "required": [
+        "content",
+        "runId",
+        "citations",
+        "actions",
+        "toolTraces"
+      ]
+    },
+    "RunResultEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contractVersion": {
+          "const": "1"
+        },
+        "response": {
+          "$ref": "#/$defs/AgentResponse"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "success",
+            "safety_emergency",
+            "action_handled"
+          ]
+        }
+      },
+      "required": [
+        "contractVersion",
+        "response",
+        "outcome"
+      ],
+      "examples": [
+        {
+          "contractVersion": "1",
+          "response": {
+            "content": "当前没有匹配的血压记录。",
+            "runId": "example-run",
+            "citations": [],
+            "actions": [],
+            "toolTraces": []
+          },
+          "outcome": "success"
+        }
+      ]
+    },
+    "AiToolDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "parameters": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "parameters"
+      ]
+    },
+    "ToolDefinitionsResponse": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AiToolDefinition"
+      },
+      "examples": [
+        [
+          {
+            "name": "get_health_metrics",
+            "description": "读取授权患者健康指标",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "metric": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      ]
+    },
+    "AgentToolCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arguments": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "arguments"
+      ],
+      "examples": [
+        {
+          "name": "get_health_metrics",
+          "arguments": {
+            "metric": "blood_pressure",
+            "limit": 20
+          }
+        }
+      ]
+    },
+    "AgentToolResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "toolName": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "SUCCESS",
+            "BLOCKED",
+            "FAILED"
+          ]
+        },
+        "content": {
+          "type": "string"
+        },
+        "errorCode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "toolName",
+        "status",
+        "content",
+        "errorCode"
+      ]
+    },
+    "ToolExecutionResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/AgentToolResult"
+        },
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "result",
+        "elapsedMs"
+      ],
+      "examples": [
+        {
+          "result": {
+            "toolName": "get_health_metrics",
+            "status": "SUCCESS",
+            "content": "{\"records\":[]}",
+            "errorCode": ""
+          },
+          "elapsedMs": 1
+        }
+      ]
+    },
+    "KnowledgeSearchHit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "citation": {
+          "$ref": "#/$defs/Citation"
+        }
+      },
+      "required": [
+        "content",
+        "score",
+        "citation"
+      ]
+    },
+    "RagSearchResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "type": "string"
+        },
+        "hits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KnowledgeSearchHit"
+          }
+        }
+      },
+      "required": [
+        "context",
+        "hits"
+      ],
+      "examples": [
+        {
+          "context": "",
+          "hits": []
+        }
+      ]
+    },
+    "RagSearchRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "examples": [
+        {
+          "query": "我的血压记录有哪些？"
+        }
+      ]
+    },
+    "ProposalRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "examples": [
+        {
+          "message": "帮我记录血压"
+        }
+      ]
+    },
+    "ProposalDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "handled": {
+          "type": "boolean"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActionProposal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "handled",
+        "content",
+        "action"
+      ],
+      "examples": [
+        {
+          "handled": false,
+          "content": null,
+          "action": null
+        },
+        {
+          "handled": true,
+          "content": "请补充单位、日期和时间。",
+          "action": null
+        },
+        {
+          "handled": true,
+          "content": "已生成待确认草案。",
+          "action": {
+            "id": "example-proposal",
+            "type": "HEALTH_RECORD",
+            "status": "PENDING_CONFIRMATION",
+            "parameters": {
+              "metric": "blood_pressure",
+              "value": "120/80",
+              "unit": "mmHg"
+            },
+            "payloadHash": "example-hash-not-a-real-digest",
+            "expiresAt": "2026-10-28T12:05:00"
+          }
+        }
+      ]
+    },
+    "InternalError": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contractVersion": {
+          "const": "1"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "contractVersion",
+        "code",
+        "message",
+        "runId",
+        "retryable"
+      ],
+      "examples": [
+        {
+          "contractVersion": "1",
+          "code": "AGENT_UNAVAILABLE",
+          "message": "AI 服务暂时不可用，请稍后重试。",
+          "runId": "example-run",
+          "retryable": true
+        }
+      ]
+    },
+    "HealthResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "ok"
+        },
+        "contractVersion": {
+          "const": "1"
+        }
+      },
+      "required": [
+        "status",
+        "contractVersion"
+      ],
+      "examples": [
+        {
+          "status": "ok",
+          "contractVersion": "1"
+        }
+      ]
+    }
+  }
+}

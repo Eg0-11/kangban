@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const source = (file) => readFile(new URL(file, import.meta.url), 'utf8');
+const source = async (file) => (await readFile(new URL(file, import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
 
 test('本人健康数据使用空 memberId，家庭成员使用稳定 ID', async () => {
   const [recordPage, homePage, reportPage] = await Promise.all([

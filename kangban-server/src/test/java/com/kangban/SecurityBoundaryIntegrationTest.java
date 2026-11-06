@@ -35,10 +35,18 @@ class SecurityBoundaryIntegrationTest {
     private CaptchaService captchaService;
 
     @Test
-    void healthEndpointIsPublicAndAvailable() throws Exception {
+    void healthEndpointIsPublicAndReportsMissingPythonConfiguration() throws Exception {
         mockMvc.perform(get("/actuator/health"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("UP"));
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value("DOWN"));
+    }
+
+    @Test
+    void internalAgentCallbacksAreDisabledByDefault() throws Exception {
+        mockMvc.perform(get("/internal/agent/v1/tools"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.contractVersion").value("1"))
+                .andExpect(jsonPath("$.code").value("INTERNAL_AGENT_UNAVAILABLE"));
     }
 
     @Test

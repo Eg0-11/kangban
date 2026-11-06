@@ -1,6 +1,5 @@
 package com.kangban.agent;
 
-import com.kangban.client.AiConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
@@ -15,25 +14,25 @@ public class AgentHealthIndicator implements HealthIndicator {
 
     private final AgentProperties agentProperties;
     private final RagProperties ragProperties;
-    private final AiConfig aiConfig;
+    private final PythonAgentGateway gateway;
 
     @Override
     public Health health() {
-        String provider = aiConfig.getProvider() == null ? "unknown" : aiConfig.getProvider();
-        boolean providerConfigured = "mock".equalsIgnoreCase(provider)
-                || (aiConfig.getApiKey() != null && !aiConfig.getApiKey().isBlank());
+        boolean providerConfigured = gateway.isConfigured();
+        boolean pythonHealthy = agentProperties.isEnabled() && gateway.isPythonHealthy();
         Health.Builder builder;
         if (!agentProperties.isEnabled()) {
             builder = Health.outOfService();
-        } else if (!providerConfigured) {
+        } else if (!providerConfigured || !pythonHealthy) {
             builder = Health.down();
         } else {
             builder = Health.up();
         }
         return builder
                 .withDetail("enabled", agentProperties.isEnabled())
-                .withDetail("provider", provider)
+                .withDetail("provider", "python")
                 .withDetail("providerConfigured", providerConfigured)
+                .withDetail("pythonHealthy", pythonHealthy)
                 .withDetail("ragEnabled", ragProperties.isEnabled())
                 .withDetail("vectorStore", ragProperties.getVectorStore())
                 .build();

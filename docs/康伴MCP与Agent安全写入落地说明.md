@@ -1,5 +1,7 @@
 # 康伴 MCP 与 Agent 安全写入落地说明
 
+> 本文保留 Java 原版的实现记录。迁移版仍由 Java 执行 MCP、授权和确认式写入，Agent 编排已迁到 Python；当前边界见 [迁移交付说明](python-agent-delivery.md) 与 [架构图](agent-architecture.md)。
+
 ## 1. 本次范围与结论
 
 本次在现有 `kangban-server` 内完成了两类能力：

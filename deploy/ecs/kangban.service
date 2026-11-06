@@ -1,7 +1,7 @@
 [Unit]
 Description=Kangban server
-After=network-online.target docker.service
-Wants=network-online.target
+After=network-online.target docker.service kangban-agent.service
+Wants=network-online.target kangban-agent.service
 
 [Service]
 Type=simple

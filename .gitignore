@@ -27,3 +27,21 @@ tianjin-medical-mcp/target/
 
 # Dependencies
 kangban-web/node_modules/
+
+# Python Agent local environment, credentials and generated files
+kangban-agent/.venv/
+kangban-agent/.venv-*/
+kangban-agent/.env
+kangban-agent/.env.*
+!kangban-agent/.env.example
+kangban-agent/.pytest_cache/
+kangban-agent/.ruff_cache/
+kangban-agent/.runtime/
+kangban-agent/.run/
+**/__pycache__/
+*.py[cod]
+
+# Local launcher and deployment credentials
+/kangban.local.env
+/deploy/ecs/.env
+/deploy/ecs/*.env

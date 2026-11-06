@@ -1,7 +1,8 @@
 # 康伴 Agent 多轮记忆边界
 
-第六个优化任务为“多轮记忆与上下文管理”。当前实现复用既有 `chat_sessions` 和
-`chat_messages`，不新增独立记忆库，也不把患者数据库快照当作长期聊天记忆。
+当前实现复用既有 `chat_sessions` 和 `chat_messages`：Java 读取当前会话历史，Python
+`memory.py` 裁剪窗口。保留原 Java UTF-16 长度、截断和 token 估算语义，不新增记忆库，
+也不把患者数据库快照当作长期聊天记忆。
 
 ## 当前轮编排
 

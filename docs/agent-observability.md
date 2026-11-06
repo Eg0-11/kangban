@@ -14,6 +14,8 @@ GET http://localhost:8080/actuator/metrics/kangban.rag.searches
 
 ## 指标
 
+迁移版由 Java 网关记录一次运行结果，Java 内部回调记录工具指标，Python 不重复记数；提案提前返回仍不记普通成功。`kangbanAgent` 健康项检查服务配置和 Python `/health`，未配置或 Python 不可达为 DOWN，Agent 关闭为 OUT_OF_SERVICE。存活正常不代表模型或所有数据源已就绪。
+
 - `kangban.agent.runs` / `kangban.agent.duration`：Agent 成功或失败次数、耗时；
 - `kangban.rag.searches` / `kangban.rag.search.duration`：公共或私有检索次数、命中/空结果/失败和耗时；
 - `kangban.rag.empty`：零结果次数；

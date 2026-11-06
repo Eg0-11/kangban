@@ -14,8 +14,12 @@ flowchart TB
     AUTH[JWT 身份与家庭授权]
     DOMAIN[领域服务
     健康 / 用药 / 病历 / 家庭]
-    AGENT[AgentOrchestrator
-    上下文、工具、记忆、RAG、模型]
+    GATEWAY[Java PythonAgentGateway
+    签名、HTTP、结果校验]
+    AGENT[Python AgentOrchestrator
+    规划、记忆、安全、模型]
+    CALLBACK[Java 内部能力
+    逐次授权、工具/RAG/提案]
     TOOLS[只读 Agent 工具
     健康指标 / 用药 / 病历]
     RAG[RoutingKnowledgeSearchService
@@ -41,9 +45,10 @@ flowchart TB
     DOMAIN --> MYSQL
     DOMAIN --> REDIS
     DOMAIN --> MINIO
-    API --> AGENT
-    AGENT --> TOOLS --> DOMAIN
-    AGENT --> RAG
+    API --> GATEWAY -->|内部认证 HTTP| AGENT
+    AGENT -->|不透明签名上下文| CALLBACK
+    CALLBACK --> TOOLS --> DOMAIN
+    CALLBACK --> RAG
     RAG -->|mysql-jdbc| MYSQL
     RAG -->|qdrant 召回 + 权限回查| QDRANT
     RAG --> MYSQL
@@ -66,8 +71,9 @@ sequenceDiagram
     participant W as kangban-web
     participant C as ConsultationController
     participant S as ConsultationService
-    participant A as AgentOrchestrator
-    participant T as 只读工具 / RAG
+    participant G as Java PythonAgentGateway
+    participant A as Python 编排
+    participant T as Java 内部工具 / RAG / 提案
     participant Q as Qwen
     participant DB as MySQL
 
@@ -77,15 +83,18 @@ sequenceDiagram
     S-->>W: 返回 messageId
     W->>C: GET /stream?messageId=...
     C->>S: 创建 SSE 流
-    S->>A: 构造签名 AgentExecutionContext
-    A->>T: 读取患者健康、用药、病历或知识库
+    S->>G: 已授权上下文、数据库快照及当前会话历史
+    G->>A: 签名上下文、运行选项、截止时间
+    A->>T: 带服务身份和签名上下文的回调
     T->>DB: 仅按服务端身份查询
     DB-->>T: 结构化数据 / 引用
     T-->>A: 工具结果和检索证据
     A->>Q: 系统提示 + 患者上下文 + 证据 + 对话历史
     Q-->>A: 最终答案或下一轮工具调用
-    A-->>S: 答案、引用、工具轨迹、指标
-    S-->>W: thinking / agent_tool / citation / token / done
+    A-->>G: 答案、引用、工具轨迹、结果分类
+    G-->>S: 校验版本和 runId 后的原结果结构
+    S->>DB: 保存完整回复与原消息关联
+    S-->>W: 原 SSE 事件（含完整回答）
     W-->>U: 丝滑展示最终回答和依据
 ```
 
@@ -93,7 +102,8 @@ sequenceDiagram
 
 | 模块 | 职责 | 关键边界 |
 | --- | --- | --- |
-| `AgentOrchestrator` | 管理 Agent 运行、上下文、工具循环、RAG 合并和最终生成 | 不直接写业务表 |
+| Python `orchestrator.py` | 规划、工具循环、记忆、证据组装和最终生成 | 不直接访问业务数据库、MCP 或确认写入 |
+| `PythonAgentGateway` | 签名上下文、内部 HTTP、预算/取消、严格结果校验和运行指标 | 不回退旧 Java 编排，不自动重试 |
 | `AgentExecutionContext` | 携带用户、患者、成员、家庭和运行 ID | 由服务端签名，不能信任客户端身份字段 |
 | `AgentToolRegistry` | 注册当前允许使用的工具 | 当前只允许只读工具 |
 | `AgentToolExecutor` | 校验上下文、执行工具、记录状态和耗时 | 越权或写工具直接阻断 |
@@ -102,7 +112,7 @@ sequenceDiagram
 | `QdrantKnowledgeSearchService` | Qdrant Top-K 召回、MySQL 正文回查、权限复核和混合排序 | Qdrant 只保存可重建索引，不保存业务事实 |
 | `VectorIndexSyncService` | 文档入库、发布、撤回和删除时同步 Qdrant | 写入失败记录 `vector_index_sync`，不吞掉 qdrant 模式故障 |
 | `ConsultationService` | 保存会话消息并把 Agent 事件转为 SSE | 处理超时、重试和断线收尾 |
-| `QwenAiConsultationClient` | Qwen Chat / Tool Calling 适配 | API Key 只从环境变量读取 |
+| Python `providers.py` | Mock、Qwen Chat / Tool Calling、DeepSeek 普通问诊适配 | API Key 只从环境变量读取 |
 
 ## 数据隔离
 
@@ -119,3 +129,5 @@ sequenceDiagram
 - 无检索证据：Agent 明确说明资料不足，并建议咨询专业人员；
 - 工具异常：记录安全的错误类型和指标，不把病历正文写入日志；
 - SSE 断线：服务端收尾，前端可以基于已保存的 messageId 重试。
+
+旧 Java 编排、规划、记忆、安全及问诊模型客户端已删除，Python 基线对照保留。具体进程、配置与检查范围见 [迁移交付说明](python-agent-delivery.md)。
